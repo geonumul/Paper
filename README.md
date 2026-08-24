@@ -186,7 +186,7 @@ python ~/.claude/skills/paper-to-journal/scripts/check_ngram.py --calibrate --jo
 
 ## 라이선스
 
-(정해서 채워 넣으세요. 공개용이면 MIT가 무난합니다.)
+MIT. `LICENSE` 파일을 보세요. 가져다 쓰고 고쳐 쓰셔도 됩니다.
 
 ## 한 가지 안내
 
