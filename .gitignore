@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+style_config.json
+_burstiness_band.json
+_ngram_allow.txt

@@ -1,0 +1,22 @@
+{
+  "_설명": "프로젝트 폴더에 style_config.json 이름으로 두면 check_style.py가 읽는다. banned에는 이 논문에서만 금지인 것(폐기 수치, 이미 정정한 표현, 수위를 넘는 서술)을 넣는다. 수치가 바뀌면 그 자리에서 옛 값을 여기 등록한다.",
+
+  "banned": [
+    ["0\\.913", "폐기 수치(누출판). 정본 0.842"],
+    ["4,?702\\s*건", "옛 표본 크기. 정본 4,200건"],
+    ["기술군\\s*9\\s*개|9\\s*개\\s*기술군", "옛 기술군 수. 정본 13개"],
+    ["14\\.5\\s*%p|\\+14\\.5", "옛 수치. 정본 +16.4%p"],
+    ["모든 지표에서|예외 없이", "반례 있음. 수위 초과"],
+    ["의미가 (위상|구조)(보다|를) (이|앞서|낫)", "우열 서술 금지"],
+    ["기술 주권|의존도가 심각", "규범어 금지. 분포 사실만"]
+  ],
+
+  "allow_file": "outputs/_style_allow.txt",
+  "connective_band": [1.5, 4.0],
+  "words_per_page": 500,
+  "decimals": 3,
+  "known_abbr": ["CPC", "IPC", "USPTO", "EPO", "BLS", "AUC", "GCN", "RF"],
+  "code_names": ["bertopic", "patentsberta", "umap", "hdbscan", "doc2vec",
+                 "cpc", "ipc", "uspto", "epo", "min_cluster_size", "c_v"],
+  "use_defaults": true
+}
