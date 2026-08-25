@@ -16,6 +16,10 @@
   한 원고에서 여덟 번 쓰이고 게재작 쉰한 편에서 한 번도 안 쓰이는 구문은
   **어휘가 아니라 말버릇**이다. 낱말 대장은 그것을 못 본다.
 
+**0편만으로는 지적이 안 된다.** 우리가 네 번 이상 쓰는 이음의 상당수(한 원고에서 28%)가
+게재작 전체에 없다. 그래서 도구가 **기저율을 먼저 재서** 보여 준다. 걸리는 것은
+게재작이 같은 자리에 쓰는 표현을 **우리가 하나도 안 쓸 때**다.
+
 무엇을 내나
   - 우리가 그 낱말과 함께 쓰는 이음(뒤 한두 낱말)과 횟수
   - 그 이음을 게재작 몇 편이 쓰는가
@@ -83,6 +87,31 @@ def follows(text, w, n=2):
     return out
 
 
+def base_rate(body, docs, least=4, sample=40):
+    """우리가 자주 쓰는 이음 중 몇 %가 게재작에 아예 없는가.
+
+    **0편이라는 사실은 생각보다 흔하다.** 실제로 네 번 이상 쓰는 이음의
+    28%가 게재작 51편 전체에 없었다. 그 비율을 모르면 평범한 이음을
+    지적으로 올리게 된다. 그래서 먼저 기저율을 재서 함께 보여 준다.
+    """
+    bi = Counter()
+    ws = re.findall(r"[A-Za-z][A-Za-z'-]*", body.lower())
+    for i in range(len(ws) - 1):
+        if ws[i] in STOP_NEXT or len(ws[i]) < 4:
+            continue
+        bi[ws[i] + " " + ws[i + 1]] += 1
+    cand = [p_ for p_, n in bi.most_common() if n >= least][:sample]
+    if not cand:
+        return 0.0
+    zero = 0
+    for p_ in cand:
+        hit = any(re.search(r"(?<![A-Za-z])" + re.escape(p_) + r"(?![A-Za-z])",
+                            t, re.I) for t in docs)
+        if not hit:
+            zero += 1
+    return 100.0 * zero / len(cand)
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not args:
@@ -110,6 +139,12 @@ def main():
                  if w not in STOP_NEXT][:top]
 
     print("# 이음 대조 · 원고 대 게재작 %d편" % len(docs))
+    print("")
+    base = base_rate(body, docs)
+    print("- **기저율: 우리가 네 번 이상 쓰는 이음 중 %.0f%%가 게재작 0편이다.**"
+          % base)
+    print("  0편이라는 사실 하나만으로는 지적이 못 된다. **걸리는 것은 게재작이"
+          " 같은 자리에 쓰는 표현을 우리가 하나도 안 쓸 때다.**")
     print("")
     flagged = 0
     for w in words:
