@@ -5,6 +5,7 @@
   python word_census.py 원고.md --txt literature/_txt --journal TFSC
   python word_census.py 원고.md --ngram 2          # 두 낱말 결합형까지
   python word_census.py 원고.md --abbr            # 약어만 전수 검사
+  python word_census.py 원고.md --floats          # 표·캡션·주석 안의 낱말만
   python word_census.py 원고_국문.md --ko --txt <국문코퍼스폴더>   # 국문 원고
   python word_census.py 원고.md --min-freq 1       # 한 번 나온 낱말도 전부
   python word_census.py 원고.md --out 대조표.md    # 파일로
@@ -177,10 +178,25 @@ def main():
     min_freq = int(opt("--min-freq", 1))
     out = opt("--out")
 
-    body = open(src, encoding="utf-8", errors="replace").read()
-    # 기록 블록과 헤더는 본문이 아니다
-    body = "\n".join(ln for ln in body.split("\n")
-                     if not ln.lstrip().startswith((">", "#")))
+    raw_all = open(src, encoding="utf-8", errors="replace").read()
+    if "--floats" in sys.argv:
+        # 표 안, 캡션, 주석만 뽑는다. 본문 전수 검사에서 빠지는 자리다
+        keep = []
+        for ln in raw_all.split("\n"):
+            st = ln.lstrip()
+            if st.startswith("|"):
+                keep.append(re.sub(r"[|:-]+", " ", ln))
+            elif re.match(r"^\**(Table|Fig(\.|ure)?|Note|Source|표|그림|주)\b",
+                          st):
+                keep.append(ln)
+        body = "\n".join(keep)
+        if not body.strip():
+            print("표·캡션·주석을 못 찾았다. markdown 표(| ... |) 형식인지 확인.")
+            return
+    else:
+        # 기록 블록과 헤더는 본문이 아니다
+        body = "\n".join(ln for ln in raw_all.split("\n")
+                         if not ln.lstrip().startswith((">", "#")))
     ko = "--ko" in sys.argv
     toks = ko_tokens(body) if ko else tokens(body)
     if n > 1:
