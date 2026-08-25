@@ -266,7 +266,7 @@ def verify(led, a, b, docs, parts, md_raw):
             continue
         w, ev = cells[1], cells[-1]
         checked += 1
-        rows_seen.append((n, w))
+        rows_seen.append((n, w, int(cells[2]) if cells[2].isdigit() else 0))
         m = re.search(r"\[([^\]]+)\]([^\[]*)", ev)
         if m:
             name, quote = m.group(1), m.group(2)
@@ -306,12 +306,24 @@ def verify(led, a, b, docs, parts, md_raw):
     # 논문 이름이 맞고 문장이 그 논문에 있어도, 그 문장이 우리 문장과 같은
     # 뜻으로 그 낱말을 쓰는지는 사람이 읽어야 안다. 그래서 매 몫마다 몇 행을
     # 지목해 눈으로 보게 한다
-    picks = [rows_seen[0], rows_seen[len(rows_seen) // 2], rows_seen[-1]]         if len(rows_seen) >= 3 else rows_seen
+    # **원고에서 많이 쓰는 낱말부터 본다.** 서른세 번 쓰는 낱말은 주장을
+    # 떠받치고, 한 번 쓰는 낱말은 안 그렇다. 같은 한 행을 읽어도 앞엣것을
+    # 읽는 편이 낫다. 거기에 구간 앞뒤를 하나씩 더해 치우침을 막는다
+    top = sorted(rows_seen, key=lambda r: -r[2])[:2]
+    picks, seen_n = [], set()
+    for r in top + [rows_seen[0], rows_seen[-1]]:
+        if r[0] not in seen_n:
+            seen_n.add(r[0])
+            picks.append(r)
+        if len(picks) >= 3:
+            break
     print("")
     print("## 뜻은 기계가 못 본다. 아래 %d행은 눈으로 본다" % len(picks))
-    for n, w in picks:
-        print("    - #%d %s: 게재작 문장과 우리 문장이 **같은 뜻·같은 문법"
-              " 자리**로 그 낱말을 쓰는가" % (n, w))
+    for n, w, freq in picks:
+        print("    - #%d %s (원고 %d회): 게재작 문장과 우리 문장이 **같은"
+              " 뜻·같은 문법 자리**로 그 낱말을 쓰는가" % (n, w, freq))
+    print("      많이 쓰는 낱말이 주장을 떠받친다. 그 낱말의 뜻이 어긋나면"
+          " 그 위에 선 문단이 전부 어긋난다")
 
 
 
