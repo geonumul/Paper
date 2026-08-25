@@ -84,7 +84,7 @@ def content_words(s):
     return {w.lower() for w in re.findall(r"[A-Za-z]{4,}", s or "")}
 
 
-def sentence_in(docs, pat, like=None):
+def sentence_in(docs, pat, like=None, w_low=""):
     """그 표현이 쓰인 게재작 문장 하나. **우리 문장과 가까운 것을 고른다.**
 
     첫 문장을 그냥 집으면 **다른 뜻의 문장**이 근거로 붙는다. 실제로
@@ -99,12 +99,27 @@ def sentence_in(docs, pat, like=None):
     for n, t in docs:
         for m in list(rx.finditer(t))[:4]:
             cand = re.sub(r"\s+", " ", m.group(0)).strip()[:110]
-            score = len(want & content_words(cand)) if want else 0
+            # 서지 항목은 근거가 아니다. 참고문헌을 잘라 내도 표지·각주에
+            # 남는 것이 있어 한 번 더 거른다
+            if re.search(r"Manual for|www\.|doi|pp\.|ISBN|Proceedings",
+                         cand, re.I):
+                continue
+            # 그 낱말 자신은 언제나 겹치므로 셈에서 뺀다. 안 빼면 겹침이
+            # 하나도 없는데도 "가까운 문장"으로 잡힌다
+            score = len((want & content_words(cand)) - {w_low}) if want else 0
             if best is None or score > best[0]:
                 best = (score, n, cand)
         if best and best[0] >= 3:
             break
-    return (best[1], best[2]) if best else (None, None)
+    if not best:
+        return None, None
+    # **겹치는 내용어가 없으면 같은 뜻이라고 말할 수 없다.** 철자만 같고
+    # 가리키는 것이 다른 경우가 네 번 나왔다(recall·read·contributions·labor).
+    # 그럴 때는 근거에 그 사실을 함께 적는다
+    mark = "" if best[0] >= 2 or not want else "  ※ 우리 문장과 겹치는 말이"
+    if mark:
+        mark += " 없다. **같은 뜻인지 사람이 확인할 것**"
+    return best[1], best[2] + mark
 
 
 
@@ -190,7 +205,7 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     pct = 100.0 * cnt / max(1, n_docs)
     if pct >= 8:
         p, s = sentence_in(docs, r"(?<![A-Za-z])" + re.escape(w) +
-                           r"(?![A-Za-z])", ours_sent)
+                           r"(?![A-Za-z])", ours_sent, w.lower())
         return ("유지", "게재작 %d편(%.0f%%)이 쓴다. [%s] %s" % (cnt, pct, p, s)
                 if p else "게재작 %d편(%.0f%%)이 쓴다" % (cnt, pct))
     if "형태만 없음" in note:
