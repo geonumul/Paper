@@ -30,6 +30,9 @@ import sys
 import glob
 from collections import Counter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _norm import norm_text          # noqa: E402
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 LFC = chr(10)   # 줄바꿈 (문자열 안 escape 사고 방지)
@@ -95,6 +98,9 @@ def tokens(text):
     `term`은 26편으로 나왔지만 실제로는 39편이었다. 사람이 눈으로 세는
     방식(낱말 경계)과 도구가 세는 방식이 달랐던 것이다.
     """
+    # 발음기호를 ASCII로 접는다. 안 접으면 Larouzee가 `larouz`와 `e`로 끊겨
+    # 있지도 않은 낱말이 대장에 오른다
+    text = norm_text(text, fold_accents=True)
     text = re.sub(r"-\s*\n\s*", "", text)
     text = re.sub(r"\$\$?[^$]{0,400}\$\$?", " ", text)   # 수식 제거
     text = re.sub(r"`[^`]{0,80}`", " ", text)              # 코드 조각 제거
