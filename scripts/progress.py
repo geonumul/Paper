@@ -48,6 +48,7 @@ STEPS = [
     ("7c",  "전수 대조: 문단",              "문단_대장.md",         "ledger"),
     ("7d",  "전수 대조: 소절·장·전체",      "소절_대장.md",         "ledger"),
     ("7-2", "각도별 읽기",                  "회차_대장.md",         "ledger"),
+    ("7e",  "기록 정리: 층에서 넘어온 것",   "기록_대장.md",         "ledger"),
     ("8",   "인용 검증",                    "인용_대장.md",         "ledger"),
     ("9",   "번역 대조",                    "번역_대장.md",         "ledger"),
     ("10",  "그림·표",                      "그림표_사양서.md",     "ledger"),
@@ -58,6 +59,7 @@ STEPS = [
 # 한 턴 몫 (전수 층에서 한 번에 볼 행 수)
 # 한 줄마다 게재작 근거를 대야 하므로 몫이 작다. 늘리면 근거를 안 대게 된다
 QUOTA = {"7a": 60, "7b": 25, "7c": 10, "7d": 4, "7-2": 1,
+         "7e": 10,
          "8": 8, "9": 10, "10": 2}
 
 
@@ -131,7 +133,11 @@ def ledger_rows(path):
 # 쓰다가 한 층의 근거가 통째로 어긋났다
 FUNCS10 = ("현상 제시", "선행 관행 규정", "갭 진술", "선택 정당화",
            "절차 서술", "표·그림 지시", "결과 보고", "해석", "경계", "한계")
-VERDICT3 = ("유지", "대체", "유보")
+# 판정 넷. **기록**은 그 층에서 정하지 않고 위층으로 넘긴다는 뜻이다.
+# 유보는 선례를 못 찾아 저자에게 넘기는 것이고, 기록은 아직 정할 때가
+# 아니라서 넘기는 것이다. 문장에서 걸린 것이 문단에서 풀리고, 문단에서
+# 걸린 것이 전체를 보고 나서야 풀린다
+VERDICT3 = ("유지", "대체", "유보", "기록")
 
 
 def ledger_terms(path):
@@ -165,9 +171,11 @@ def ledger_terms(path):
         fi, vi = col
         if fi < len(cells) and cells[fi] and cells[fi] not in FUNCS10:
             bad_fn.append((cells[0], cells[fi]))
-        if vi is not None and vi < len(cells) and cells[vi] \
-                and cells[vi] not in VERDICT3:
-            bad_vd.append((cells[0], cells[vi]))
+        # 판정 칸은 "유지 (기록)"처럼 적힐 수 있다. 앞머리로 본다
+        if vi is not None and vi < len(cells) and cells[vi]:
+            v = cells[vi].lstrip("★ ").strip()
+            if not any(v.startswith(x) for x in VERDICT3):
+                bad_vd.append((cells[0], cells[vi]))
     return bad_fn, bad_vd
 
 
@@ -199,7 +207,8 @@ def gate(step, d, st):
                            " 없다**" % (len(bad_fn), ex))
         if bad_vd:
             ex = ", ".join("%s(%s)" % (n, v) for n, v in bad_vd[:4])
-            return False, ("판정이 `15` §4-4의 셋(유지·대체·유보) 밖인 행 "
+            return False, ("판정이 `15` §4-4의 넷(유지·대체·유보·기록)"
+                           " 밖인 행 "
                            "**%d개**: %s" % (len(bad_vd), ex))
         return True, "%d행 전부 판정" % total
     return True, "산출물 있음: %s" % os.path.basename(path)
