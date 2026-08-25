@@ -125,6 +125,52 @@ def ledger_rows(path):
     return total, blank
 
 
+# `15` §4-1의 기능 열 갈래와 §4-4의 판정 셋. **여기 없는 이름은 안 쓴다.**
+# 갈래를 지어 쓰면 게재작에서 같은 기능을 찾을 수가 없고, 근거가 자리도
+# 기능도 다른 문장이 된다. 실제로 "서술", "결과 수치" 같은 이름을 지어
+# 쓰다가 한 층의 근거가 통째로 어긋났다
+FUNCS10 = ("현상 제시", "선행 관행 규정", "갭 진술", "선택 정당화",
+           "절차 서술", "표·그림 지시", "결과 보고", "해석", "경계", "한계")
+VERDICT3 = ("유지", "대체", "유보")
+
+
+def ledger_terms(path):
+    """대장이 **정해진 이름만** 쓰는가. (기능이 틀린 행, 판정이 틀린 행)
+
+    관문이 빈칸만 보면, 채워져 있기만 하면 무엇이 적혀 있든 통과한다.
+    그래서 지어낸 갈래로 채운 층이 그대로 닫힐 뻔했다.
+    """
+    bad_fn, bad_vd = [], []
+    if not os.path.exists(path):
+        return bad_fn, bad_vd
+    in_body, header, col = False, None, None
+    for ln in io.open(path, encoding="utf-8", errors="replace"):
+        ln = ln.rstrip()
+        if not ln.startswith("|"):
+            in_body, header, col = False, None, None
+            continue
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if set(ln) <= set("|-: "):
+            in_body = True
+            if header:
+                fi = [i for i, h in enumerate(header) if h.strip() == "기능"]
+                vi = [i for i, h in enumerate(header) if "판정" in h]
+                col = (fi[0] if fi else None, vi[0] if vi else None)
+            continue
+        if not in_body:
+            header = cells
+            continue
+        if not col or col[0] is None:
+            continue
+        fi, vi = col
+        if fi < len(cells) and cells[fi] and cells[fi] not in FUNCS10:
+            bad_fn.append((cells[0], cells[fi]))
+        if vi is not None and vi < len(cells) and cells[vi] \
+                and cells[vi] not in VERDICT3:
+            bad_vd.append((cells[0], cells[vi]))
+    return bad_fn, bad_vd
+
+
 def gate(step, d, st):
     """그 단계가 실제로 끝났는가. (통과여부, 설명)"""
     info = dict((s[0], s) for s in STEPS)[step]
@@ -144,6 +190,17 @@ def gate(step, d, st):
         if blank:
             return False, ("판정 안 한 행 **%d개** 남았다 (전체 %d행). "
                            "**이 단계는 아직 안 끝났다**" % (blank, total))
+        # 채워진 것만 보지 않고 **무엇으로 채웠는지**를 본다
+        bad_fn, bad_vd = ledger_terms(path)
+        if bad_fn:
+            ex = ", ".join("%s(%s)" % (n, v) for n, v in bad_fn[:4])
+            return False, ("기능이 `15` §4-1의 열 갈래 밖인 행 **%d개**: %s. "
+                           "**갈래를 지어 쓰면 게재작에서 같은 기능을 찾을 수"
+                           " 없다**" % (len(bad_fn), ex))
+        if bad_vd:
+            ex = ", ".join("%s(%s)" % (n, v) for n, v in bad_vd[:4])
+            return False, ("판정이 `15` §4-4의 셋(유지·대체·유보) 밖인 행 "
+                           "**%d개**: %s" % (len(bad_vd), ex))
         return True, "%d행 전부 판정" % total
     return True, "산출물 있음: %s" % os.path.basename(path)
 
