@@ -26,7 +26,10 @@
   저널 표식이 없는 경우가 흔하다.
 - 5-gram이 걸리면: 귀속 인용(따옴표+출처)이거나 완전 재구성이거나 둘 중
   하나만 한다. 어중간한 근접 의역이 가장 나쁘다.
-- 변동계수(CV)는 문장 길이의 표준편차를 평균으로 나눈 값이다. 균일한 리듬은
+- 문장 길이가 얼마나 들쭉날쭉한지를 **표준편차 / 평균**으로 잰다.
+  **이 값에 줄임말을 붙이지 않는다.** 게재작 51편에 `CV`도
+  `coefficient of variation`도 0편이었다. 도구가 지어낸 줄임말을
+  찍으면 보고하는 쪽이 그 말을 기준어로 옮겨 쓴다. 균일한 리듬은
   AI 티의 1순위 지표다. 사람이 쓴 글은 대개 0.5-0.8에 들어온다.
 """
 import io
@@ -97,7 +100,7 @@ def prose_only(text, drop_floats=True):
     if not drop_floats:
         # 리듬을 잴 때는 표·캡션을 빼지 않는다. PDF에서 뽑은 게재작 쪽은
         # 표를 가려낼 수 없어서, 원고에서만 빼면 **서로 다른 것을 재게 된다.**
-        # 실제로 그렇게 해서 CV가 0.68에서 0.49로 떨어져 판정이 뒤집혔다.
+        # 실제로 그렇게 해서 그 값이 0.68에서 0.49로 떨어져 판정이 뒤집혔다.
         return re.sub(r"\$[^$]{0,200}\$", " ", text)
     keep = []
     for ln in text.split(chr(10)):
@@ -165,7 +168,7 @@ def stability(rows):
     print("")
     print("## 대역 안정성 (몇 편이면 충분한가)")
     print("")
-    print("| 편수 | CV 대역 | 폭 | 직전 대비 폭 변화 |")
+    print("| 편수 | 편차/평균 대역 | 폭 | 직전 대비 폭 변화 |")
     print("|--|--|--|--|")
     prev = None
     steps = list(range(10, len(rows) + 1, 10))
@@ -215,8 +218,8 @@ def calibrate(txt_dir, mark, band_f):
     json.dump(band, open(band_f, "w"))
     print("게재작 %d편 실측" % len(rows))
     for nm, m, cv in rows:
-        print("  %-46s 평균 %5.1f단어  CV %.2f" % (nm, m, cv))
-    print("\n대역: 문장 평균 %s-%s단어, CV %s-%s (중앙값 %s)  → %s"
+        print("  %-46s 평균 %5.1f단어  편차/평균 %.2f" % (nm, m, cv))
+    print("\n대역: 문장 평균 %s-%s단어, 길이 편차/평균 %s-%s (중앙값 %s)  → %s"
           % (band["len_lo"], band["len_hi"], band["cv_lo"], band["cv_hi"],
              band["cv_med"], band_f))
     if len(rows) < 40:
@@ -306,7 +309,7 @@ def scan(path, txt_dir, band_f, allow_f):
     lens = sentences_en(" ".join(rh_parts))
     if len(lens) >= 5:
         cv = statistics.stdev(lens) / statistics.mean(lens)
-        line = "\n## 문장 리듬: 평균 %.1f단어, CV %.2f" % (statistics.mean(lens), cv)
+        line = "\n## 문장 리듬: 평균 %.1f단어, 길이 편차/평균 %.2f" % (statistics.mean(lens), cv)
         if os.path.exists(band_f):
             b = json.load(open(band_f))
             if b.get("method") != METHOD:

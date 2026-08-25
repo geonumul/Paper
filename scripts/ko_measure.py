@@ -12,7 +12,7 @@
   대조한다.** 영문 도구(check_ngram)는 국문 문장을 못 센다.
 
 재는 것
-  - 문장 길이(어절 수) 평균·중앙값·변동계수(CV)
+  - 문장 길이(어절 수) 평균·중앙값, 그리고 얼마나 들쭉날쭉한지(편차/평균)
   - 문단당 문장 수
   - **종결어미 분포**: 사실 보고 / 해석 / 함의 / 제안 / 의의
   - 기둥 구문("~한 결과, ~하였다") 빈도
@@ -117,7 +117,7 @@ def measure(path, label):
     print("- 문장 %d개 / 문단 %d개" % (len(sents), len(paras)))
     print("- 문장 길이(어절): 평균 %.1f, 중앙값 %d, 최소 %d, 최대 %d"
           % (statistics.mean(lens), statistics.median(lens), min(lens), max(lens)))
-    print("- **문장 길이 변동계수(CV): %.2f**" % cv)
+    print("- **문장 길이가 들쭉날쭉한 정도(편차/평균): %.2f**" % cv)
     print("- 문단당 문장 수: 중앙값 %d (최소 %d, 최대 %d)"
           % (statistics.median(spp), min(spp), max(spp)))
     print("- 기둥 구문('~한 결과,'): %d회" % len(re.findall(PILLAR, body)))
