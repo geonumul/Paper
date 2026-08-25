@@ -11,6 +11,49 @@
 
 ---
 
+## 쓰는 법 (명령어를 몰라도 된다)
+
+VS Code나 터미널에서 Claude Code를 켜고 **이렇게 말하면 된다.**
+
+> 이 저장소를 논문 검수 스킬로 깔아 줘: https://github.com/geonumul/Paper.git
+
+깔고 나서 **Claude Code를 껐다 켜면** `/paper-to-journal` 이 생긴다. 그 뒤로는
+계속 말로 하면 된다.
+
+> 논문 검수해 줘
+
+그러면 원고 파일, 모아 둔 논문 폴더, 목표 학술지를 물어본다. 답만 하면 된다.
+
+### Claude가 읽는 설치 절차
+
+**아래는 이 저장소를 처음 보는 Claude를 위한 것이다.** 사용자가 위처럼 말하면
+이 순서대로 한다.
+
+1. **어디에 깔지 정한다.** 스킬은 `~/.claude/skills/<이름>/` 아래에 있어야
+   Claude Code가 알아본다
+
+   ```bash
+   git clone https://github.com/geonumul/Paper.git ~/.claude/skills/paper-to-journal
+   ```
+
+   Windows PowerShell이면 `$HOME\.claude\skills\paper-to-journal`
+
+2. **파이썬이 있는지 본다.** `python --version` 이 3.9 이상이면 된다. 없으면
+   검사 도구는 못 쓰고 문서 기준만 쓸 수 있다고 알린다
+3. **PDF 도구를 깐다.** `pip install pymupdf`. 게재작에서 글자를 뽑고 그림을
+   이미지로 보려면 필요하다
+4. **소리 알림을 물어본다.** "검수는 오래 걸립니다. 끝날 때 소리로 알려
+   드릴까요?" 승낙하면
+   `python ~/.claude/skills/paper-to-journal/scripts/setup_sound.py --on`.
+   **묻지 않고 설정을 바꾸지 않는다**
+5. **껐다 켜라고 알린다.** 스킬 목록은 켤 때 한 번 읽는다
+6. 다시 켜면 `/paper-to-journal` 로 시작한다. 그 뒤 절차는 `SKILL.md` §0-A
+
+**사용자에게 명령어를 치게 하지 않는다.** 위 명령은 Claude가 실행하고, 사용자는
+허락만 누르면 된다.
+
+---
+
 ## 이 문서에서 쓰는 말
 
 | 말 | 뜻 |
