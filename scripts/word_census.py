@@ -4,6 +4,7 @@
 쓰임:
   python word_census.py 원고.md --txt literature/_txt --journal TFSC
   python word_census.py 원고.md --ngram 2          # 두 낱말 결합형까지
+  python word_census.py 원고.md --abbr            # 약어만 전수 검사
   python word_census.py 원고_국문.md --ko --txt <국문코퍼스폴더>   # 국문 원고
   python word_census.py 원고.md --min-freq 1       # 한 번 나온 낱말도 전부
   python word_census.py 원고.md --out 대조표.md    # 파일로
@@ -110,10 +111,64 @@ def load_corpus(txt_dir, mark, n, ko=False):
     return docs, len(files)
 
 
+def abbr_report(src, txt_dir, mark):
+    """원고의 약어를 전부 뽑아 ①원고에서 정의했는가 ②게재작이 실제로 쓰는가."""
+    raw = open(src, encoding="utf-8", errors="replace").read()
+    body = "\n".join(ln for ln in raw.split("\n")
+                     if not ln.lstrip().startswith((">", "#")))
+    found = Counter(re.findall(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])", body))
+    if not found:
+        print("약어를 못 찾았다.")
+        return
+    files = [f for f in sorted(glob.glob(txt_dir + "/*.txt"))
+             if not mark or mark.lower() in os.path.basename(f).lower()]
+    docs = []
+    for f in files:
+        t = open(f, encoding="utf-8", errors="replace").read()
+        docs.append(set(re.findall(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])", t)))
+    n_files = len(files) or 1
+
+    print("# 약어 전수 검사 · %s" % os.path.basename(src))
+    print("")
+    print("- 원고의 약어 **%d종** / 코퍼스 %d편" % (len(found), n_files))
+    print("- **대화에서 익숙해진 약어를 원고에 쓰지 않는다.** 게재작이 실제로"
+          " 그 약어를 쓰는지, 원고에서 정의했는지 둘 다 본다")
+    print("")
+    print("| 약어 | 원고 빈도 | 원고에서 정의 | 코퍼스 편수 | 비율 | 1차 판정 |")
+    print("|--|--|--|--|--|--|")
+    rows = []
+    for a_, n in found.items():
+        first = body.find(a_)
+        window = body[max(0, first - 140):first + 140]
+        defined = bool(re.search(r"\([^)]*%s[^)]*\)" % re.escape(a_), window)
+                       or re.search(r"%s\s*\(" % re.escape(a_), window))
+        c = sum(1 for d in docs if a_ in d)
+        pct = 100.0 * c / n_files
+        if c == 0:
+            v = "**코퍼스에 없음. 풀어 쓸 것**"
+        elif not defined:
+            v = "**정의 없음**"
+        elif pct < 8:
+            v = "드묾(8% 미만). 풀어 쓸지 판단"
+        else:
+            v = "맥락 확인"
+        rows.append((c, -n, a_, n, "○" if defined else "**✗**", c, pct, v))
+    rows.sort()
+    for _, _, a_, n, d, c, pct, v in rows:
+        print("| %s | %d | %s | %d | %.1f%% | %s |" % (a_, n, d, c, pct, v))
+    print("")
+    print("판정: 유지 / 풀어 쓰기 / 정의 추가 중 하나를 모든 행에 적는다.")
+    print("**새 약어를 만들지 않는다.** 게재작이 안 쓰는 줄임말은 풀어 쓴다"
+          "(예: CV라 쓰지 말고 cross-validation).")
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not args:
         print(__doc__)
+        return
+    if "--abbr" in sys.argv:
+        abbr_report(args[0], opt("--txt", "literature/_txt"), opt("--journal", ""))
         return
     src = args[0]
     txt_dir = opt("--txt", "literature/_txt")
