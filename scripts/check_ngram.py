@@ -18,6 +18,12 @@
       --allow 는 사람이 통과시킨 관용구 목록(기본 _ngram_allow.txt).
       문장 길이 변동계수를 실측 대역과 비교한다.
 
+- **양쪽에서 참고문헌을 걷어내고 센다.** 같은 논문을 인용한 두 글은 그 제목과
+  저널명을 필연적으로 공유한다. 그것까지 세면 겹침이 열 배로 부푼다.
+- 겹친 것은 **몇 편에 나오는가**로 나눈다. 세 편 이상이면 그 분야의 말이고,
+  한두 편에만 나오면 읽어야 하는 것이다.
+- `--journal` 표식으로 걸러 0편이 되면 **거르지 않고 전부 쓴다.** 캐시 이름에
+  저널 표식이 없는 경우가 흔하다.
 - 5-gram이 걸리면: 귀속 인용(따옴표+출처)이거나 완전 재구성이거나 둘 중
   하나만 한다. 어중간한 근접 의역이 가장 나쁘다.
 - 변동계수(CV)는 문장 길이의 표준편차를 평균으로 나눈 값이다. 균일한 리듬은
@@ -34,6 +40,9 @@ import statistics
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 N = 5
+# 재는 방식의 이름. 방식이 바뀌면 옛 대역과 새 측정을 섞으면 안 된다.
+# 참고문헌·표를 빼기 전에 만든 대역에 뺀 뒤의 값을 대면 판정이 뒤집힌다.
+METHOD = "prose_only_v2"
 DEF_LIT = "literature"
 DEF_TXT = "literature/_txt"
 BAND_F = "_burstiness_band.json"
@@ -60,6 +69,66 @@ def sentences_en(text):
         if 4 <= len(w) <= 120:
             out.append(len(w))
     return out
+
+
+REF_HEAD = re.compile(r"(?im)^[ 	]*#{0,4}[ 	]*\**(references|bibliography"
+                      r"|참고문헌)\**[ 	]*$")
+
+
+def prose_only(text, drop_floats=True):
+    """참고문헌·표·캡션·수식을 걷어내고 **산문만** 남긴다.
+
+    같은 논문을 인용한 두 글은 그 제목과 저널명을 필연적으로 공유한다.
+    그것까지 세면 겹침이 열 배로 부풀어 진짜 겹침이 묻힌다. 실제로
+    1,645건 중 실제로 읽어야 할 것은 131종이었다.
+    """
+    m = list(REF_HEAD.finditer(text))
+    if m:
+        text = text[:m[-1].start()]
+    else:
+        # PDF에서 뽑은 글은 줄바꿈이 거의 없어 "References"가 문장 한가운데
+        # 처럼 보인다. 그래서 줄 단위로는 못 찾는다. 글의 절반을 지난 뒤
+        # **처음 나오는** References를 참고문헌 시작으로 본다.
+        cands = [m2.start() for m2 in
+                 re.finditer(r"References|Bibliography|참고문헌", text)
+                 if m2.start() > len(text) * 0.5]
+        if cands:
+            text = text[:cands[0]]
+    if not drop_floats:
+        # 리듬을 잴 때는 표·캡션을 빼지 않는다. PDF에서 뽑은 게재작 쪽은
+        # 표를 가려낼 수 없어서, 원고에서만 빼면 **서로 다른 것을 재게 된다.**
+        # 실제로 그렇게 해서 CV가 0.68에서 0.49로 떨어져 판정이 뒤집혔다.
+        return re.sub(r"\$[^$]{0,200}\$", " ", text)
+    keep = []
+    for ln in text.split(chr(10)):
+        st = ln.strip()
+        if st.startswith(("|", ">", "!")):
+            continue                      # 표, 인용 블록, 그림
+        if re.match(r"^\**(Table|Fig(\.|ure)?|Note|Source|Appendix)", st):
+            continue                      # 캡션·주석
+        keep.append(ln)
+    t = chr(10).join(keep)
+    t = re.sub(r"\$[^$]{0,200}\$", " ", t)          # 수식
+    t = re.sub(r"`[^`]{0,200}`", " ", t)            # 코드 조각
+    return t
+
+
+def by_mark(files, mark, what="게재작"):
+    """파일 이름으로 거르되, **0편이 나오면 거르지 않은 것을 쓴다.**
+
+    캐시 파일 이름에 저널 표식이 없는 경우가 흔하다. 그때 필터를 그대로
+    믿으면 "게재작 0편"이 되어 대역을 못 잰다. 실제로 그렇게 막힌 적이 있다.
+    """
+    if not mark:
+        return files
+    hit = [f for f in files if mark.lower() in os.path.basename(f).lower()]
+    if hit:
+        return hit
+    print("주의: 파일 이름에 '%s' 표식이 있는 %s가 없다."
+          " **이름으로 거르지 않고 %d편을 전부 쓴다.**"
+          % (mark, what, len(files)))
+    print("      (그 폴더에 목표 저널 것만 들어 있다면 이대로가 맞다)")
+    return files
 
 
 def extract(lit, txt_dir):
@@ -121,10 +190,10 @@ def stability(rows):
 
 def calibrate(txt_dir, mark, band_f):
     rows = []
-    for f in sorted(glob.glob(txt_dir + "/*.txt")):
-        if mark and mark.lower() not in os.path.basename(f).lower():
-            continue
-        lens = sentences_en(open(f, encoding="utf-8", errors="replace").read())
+    for f in by_mark(sorted(glob.glob(txt_dir + "/*.txt")), mark):
+        lens = sentences_en(prose_only(
+            open(f, encoding="utf-8", errors="replace").read(),
+            drop_floats=False))
         if len(lens) < 50:
             continue
         cv = statistics.stdev(lens) / statistics.mean(lens)
@@ -139,7 +208,8 @@ def calibrate(txt_dir, mark, band_f):
     means = [r[1] for r in rows]
     if "--stability" in sys.argv:
         stability(rows)
-    band = {"cv_lo": min(cvs), "cv_hi": max(cvs),
+    band = {"method": METHOD,
+            "cv_lo": min(cvs), "cv_hi": max(cvs),
             "cv_med": round(statistics.median(cvs), 2),
             "len_lo": min(means), "len_hi": max(means), "n_papers": len(rows)}
     json.dump(band, open(band_f, "w"))
@@ -156,7 +226,9 @@ def calibrate(txt_dir, mark, band_f):
 
 
 def scan(path, txt_dir, band_f, allow_f):
-    raw = open(path, encoding="utf-8").read()
+    src = open(path, encoding="utf-8").read()
+    raw = prose_only(src)                       # 겹침 검사용 (표·캡션 뺀다)
+    rhythm_src = prose_only(src, drop_floats=False)   # 리듬용 (게재작과 같게)
     # 영문 산문만 (국문 대역·기록 블록 제외)
     en_parts = []
     for para in raw.split("\n\n"):
@@ -183,31 +255,68 @@ def scan(path, txt_dir, band_f, allow_f):
         allow = {l.strip() for l in open(allow_f, encoding="utf-8") if l.strip()}
     grams = {g: i for g, i in grams.items() if g not in allow}
 
-    hits = []
+    where = {}          # 5-gram -> 그것이 나온 문헌 이름들
     files = sorted(glob.glob(txt_dir + "/*.txt"))
     if not files:
         print("(문헌 캐시가 없어 5-gram 대조를 건너뜁니다. --extract 먼저)")
     for f in files:
-        cw = norm_words(open(f, encoding="utf-8", errors="replace").read())
+        # 문헌 쪽도 **산문만** 본다. 참고문헌까지 세면 같은 논문을 인용한
+        # 두 글이 제목·저널명을 공유해 겹침이 열 배로 부푼다
+        cw = norm_words(prose_only(
+            open(f, encoding="utf-8", errors="replace").read(),
+            drop_floats=False))
         cg = set(" ".join(cw[i:i + N]) for i in range(len(cw) - N + 1))
         for g in grams:
             if g in cg:
-                hits.append((g, os.path.basename(f)[:48]))
-    if hits:
-        print("## 문헌과 겹치는 5-gram %d건" % len(hits))
-        for g, src in hits[:25]:
-            print('  - "%s"  <- %s' % (g, src))
+                where.setdefault(g, []).append(os.path.basename(f)[:48])
+    if where:
+        common = {g: v for g, v in where.items() if len(v) >= 3}
+        rare = {g: v for g, v in where.items() if len(v) <= 2}
+        print("## 문헌 본문과 겹치는 5-gram %d종" % len(where))
+        print("")
+        print("- **세 편 이상에 나오는 것 %d종**: 그 분야가 같이 쓰는 말이다."
+              " 여러 논문이 함께 쓰면 베낀 것이 아니라 그 분야의 어휘다"
+              % len(common))
+        print("- **한두 편에만 나오는 것 %d종**: 읽어야 하는 것" % len(rare))
+        print("")
+        if common:
+            print("### 분야 관용구 후보 (세 편 이상)")
+            for g, v in sorted(common.items(), key=lambda x: -len(x[1]))[:10]:
+                print('  - "%s"  (%d편)' % (g, len(v)))
+            print("")
+        if rare:
+            print("### 읽어야 하는 것 (한두 편에만)")
+            for g, v in sorted(rare.items())[:25]:
+                print('  - "%s"  <- %s' % (g, v[0]))
+            if len(rare) > 25:
+                print("  - (외 %d종. 전수 판정은 문장 층에서 문장과 함께 한다)"
+                      % (len(rare) - 25))
         print("  → 귀속 인용이 아니면 문장을 재구성할 것."
               " 관용구면 %s에 등재." % allow_f)
     elif files:
         print("## 5-gram 겹침 없음")
 
-    lens = sentences_en(prose)
+    # 원래의 문단 거르기를 그대로 쓴다. 한 글자짜리 토막(참고문헌의 이니셜
+    # 등)이 많은 문단은 산문이 아니다
+    rh_parts = []
+    for para in rhythm_src.split(chr(10) + chr(10)):
+        w = norm_words(para)
+        if w and sum(1 for x in w if len(x) > 1) / max(1, len(w)) > 0.6                 and not re.search(r"[가-힣]", para):
+            rh_parts.append(para)
+    lens = sentences_en(" ".join(rh_parts))
     if len(lens) >= 5:
         cv = statistics.stdev(lens) / statistics.mean(lens)
         line = "\n## 문장 리듬: 평균 %.1f단어, CV %.2f" % (statistics.mean(lens), cv)
         if os.path.exists(band_f):
             b = json.load(open(band_f))
+            if b.get("method") != METHOD:
+                print("")
+                print("**대역을 다시 재야 한다.** 이 대역 파일은 옛 방식으로"
+                      " 잰 것이고(참고문헌·표를 빼지 않았다), 지금 원고는 새"
+                      "  방식으로 쟀다.")
+                print("잣대와 재는 법이 다르면 판정이 뒤집힌다."
+                      " `--calibrate`를 다시 돌린 뒤에 이 검사를 한다.")
+                return
             ok = b["cv_lo"] <= cv <= b["cv_hi"]
             line += ("  (실측 대역 %s-%s) %s"
                      % (b["cv_lo"], b["cv_hi"],
