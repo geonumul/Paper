@@ -59,3 +59,20 @@ def suspicious_zero(hits, total, label=""):
                     " 틀렸다는 신호다.** 형식을 하나 열어 확인한다."
                     % (total, hits))
     return ("\n".join(msgs) + ("  (%s)" % label if label and msgs else ""))
+
+
+# 통화의 달러는 수식 구분자가 아니다. 이것을 안 가리면 `US$ 4 million`의
+# 달러가 다음 달러와 짝지어 그 사이 본문을 통째로 수식으로 삼킨다.
+# 실제로 7,876자(3.1-3.2절 전체)가 삼켜져 그 구간의 낱말이 전부
+# "LaTeX 명령"으로 판정된 적이 있다.
+_CURRENCY = re.compile(r"(?:US|A|C|NZ|HK|S)?\$(?=\s?[\d.,])|(?<=[A-Z])\$")
+_MASK = ""
+
+
+def mask_currency(t):
+    """통화 달러를 임시 문자로 가린다. 수식 짝짓기 전에 부른다."""
+    return _CURRENCY.sub(lambda m: m.group(0).replace("$", _MASK), t)
+
+
+def unmask_currency(t):
+    return t.replace(_MASK, "$")

@@ -36,6 +36,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _norm import mask_currency, norm_text   # noqa: E402
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 MATH = re.compile(r"\$\$[^$]{0,800}\$\$|\$[^$]{0,300}\$", re.S)
@@ -89,7 +92,13 @@ def load_docs(txt_dir):
 
 
 def split_manuscript(md):
-    """본문 산문 / 표 / 캡션 / 수식 / 참고문헌으로 가른다."""
+    """본문 산문 / 표 / 캡션 / 수식 / 참고문헌으로 가른다.
+
+    **통화의 달러를 먼저 가린다.** `US$ 4 million`의 달러가 다음 달러와
+    짝지으면 그 사이 본문이 통째로 수식이 된다. 실제로 7,876자가 삼켜져
+    그 구간 낱말이 전부 "LaTeX 명령"으로 판정된 적이 있다.
+    """
+    md = mask_currency(md)
     m = REFHEAD.search(md)
     body, refs = (md[:m.start()], md[m.start():]) if m else (md, "")
     math = " ".join(MATH.findall(body))
@@ -176,59 +185,94 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     return None
 
 
-def verify(led, a, b, docs, parts):
-    """이미 적힌 근거가 사실인지 되짚는다.
+def in_body_independent(md_raw, w):
+    """그 낱말이 본문에 있는가를 **판정과 다른 방법으로** 다시 본다.
 
-    대장의 근거는 기계가 쓴 것이다. 아무도 되짚지 않으면 그대로 굳는다.
-    세 가지를 본다.
+    되짚기가 판정과 같은 계산을 쓰면 같은 버그에 같이 눈이 먼다. 실제로
+    달러 짝짓기 버그 하나가 판정과 자가검사를 동시에 통과시킨 적이 있다.
 
-      1 근거가 이름 댄 논문에 그 낱말이 실제로 있는가
-      2 인용한 문장이 그 논문에 실제로 있는가
-      3 "참고문헌에만 있다"고 적힌 낱말이 정말 본문에 없는가
+    그래서 여기서는 달러를 아예 안 본다. 낱말이 나온 **줄의 생김새**로
+    가른다. 보통 낱말이 다섯 개 이상이고 LaTeX 명령이 없고 표 줄이
+    아니면 산문이다.
+    """
+    m = REFHEAD.search(md_raw)
+    body = md_raw[:m.start()] if m else md_raw
+    rx = re.compile(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", re.I)
+    for line in body.split(chr(10)):
+        if not rx.search(line):
+            continue
+        st = line.strip()
+        if st.startswith("|") or st.startswith("$$"):
+            continue
+        if len(re.findall(chr(92) * 2 + r"[a-zA-Z]{2,}", st)) >= 2:
+            continue                      # LaTeX 명령이 여럿이면 수식 줄이다
+        if len(re.findall(r"[A-Za-z]{3,}", st)) >= 5:
+            return True
+    return False
+
+
+def verify(led, a, b, docs, parts, md_raw):
+    """이미 적힌 근거가 사실인지 되짚는다. **판정과 다른 경로로 계산한다.**
+
+    네 가지를 본다.
+
+      1 근거가 이름 댄 논문이 코퍼스에 있는가 (줄여 적었으면 알려 준다)
+      2 인용한 문장이 그 논문에 실제로 있는가 (따옴표·굽은 부호는 맞춰 본다)
+      3 "참고문헌에만" "수식 안"이라 적힌 낱말이 정말 본문에 없는가
+      4 판정 칸이 비어 있지 않은가
 
     **한 줄이라도 안 맞으면 그 배치의 판정을 다시 본다.**
     """
-    prose, tables, caps, math, refs = parts
     byname = dict(docs)
-    rows, bad, checked = rows_of(led), [], 0
-    for n, w, freq, cnt, note in rows:
-        if not (a <= n <= b):
+    bad, checked, short_key = [], 0, 0
+    lines = list(io.open(led, encoding="utf-8"))
+    for line in lines:
+        m0 = re.match(r"\|\s*(\d+)\s*\|", line)
+        if not m0:
             continue
-        line = None
-        for ln in io.open(led, encoding="utf-8"):
-            if re.match(r"\|\s*%d\s*\|" % n, ln):
-                line = ln
-                break
-        if not line:
+        n = int(m0.group(1))
+        if not (a <= n <= b):
             continue
         cells = [c.strip() for c in line.rstrip().strip("|").split("|")]
         if len(cells) < 8 or not cells[-1]:
             continue
-        ev = cells[-1]
+        w, ev = cells[1], cells[-1]
         checked += 1
-        m = re.search(r"\[([^\]]+)\]\s*(.*)$", ev)
+        m = re.search(r"\[([^\]]+)\]([^\[]*)", ev)
         if m:
-            name, quote = m.group(1), m.group(2).strip()
+            name, quote = m.group(1), m.group(2)
             t = byname.get(name)
             if t is None:
-                bad.append((n, w, "근거가 댄 논문이 코퍼스에 없다: %s" % name))
-                continue
-            head = re.sub(r"\s+", " ", quote)[:40]
-            if head and re.sub(r"\s+", " ", t).find(head) < 0:
-                bad.append((n, w, "인용한 문장이 그 논문에 없다: %s…" % head))
-        if "참고문헌에만" in ev and (has(prose, w) or has(tables, w)):
-            bad.append((n, w, "본문에도 있는데 참고문헌에만 있다고 적혔다"))
-        if "수식 안" in ev and (has(prose, w) or has(tables, w)):
-            bad.append((n, w, "본문에도 있는데 수식이라고 적혔다"))
+                cand = [k for k in byname if k.startswith(name)]
+                if len(cand) == 1:
+                    t = byname[cand[0]]
+                    short_key += 1
+                else:
+                    bad.append((n, w, "근거가 댄 논문이 코퍼스에 없다: %s"
+                                % name))
+                    continue
+            # 따옴표·굽은 부호·조사를 걷어내고 앞머리를 맞춰 본다
+            q = norm_text(quote)
+            q = re.sub(r"^[^A-Za-z]+", "", q)
+            q = re.sub(r"\s+", " ", q).strip()[:40]
+            if q and norm_text(re.sub(r"\s+", " ", t)).find(q) < 0:
+                bad.append((n, w, "인용한 문장이 그 논문에 없다: %s…" % q))
+        if ("참고문헌에만" in ev or "수식 안" in ev) and                 in_body_independent(md_raw, w):
+            bad.append((n, w, "본문에 있는데 '%s'이라고 적혔다"
+                        % ("참고문헌에만" if "참고문헌에만" in ev else "수식")))
     print("# 근거 되짚기 · %d-%d행" % (a, b))
     print("")
     print("- 근거가 적힌 행 **%d개** 중 어긋난 것 **%d개**" % (checked, len(bad)))
-    for n, w, why in bad[:20]:
+    for n, w, why in bad[:25]:
         print("    - #%d %s: %s" % (n, w, why))
+    if short_key:
+        print("- 논문 키를 줄여 적은 근거 %d개. **전체 키로 적는다.**"
+              " 기계가 되짚을 수 없는 근거는 근거가 아니다" % short_key)
     if not bad and checked:
         print("- 전부 확인됐다. 근거가 댄 논문에 그 낱말과 문장이 실제로 있다")
     if not checked:
         print("- 그 구간에 아직 근거가 적힌 행이 없다")
+
 
 
 def main():
@@ -250,7 +294,8 @@ def main():
     parts = split_manuscript(io.open(md_path, encoding="utf-8",
                                      errors="replace").read())
     if "--verify" in sys.argv:
-        verify(led, a, b, docs, parts)
+        verify(led, a, b, docs, parts,
+               io.open(md_path, encoding="utf-8", errors="replace").read())
         return
     rows = [r for r in rows_of(led) if a <= r[0] <= b]
     if not rows:
