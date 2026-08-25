@@ -70,6 +70,13 @@ def main():
 
     ab = grab(r"^abstract|초록")
     if ab:
+        # 초록은 **다음 표제까지**가 아니라 초록 본문까지만 센다.
+        # 사이에 낀 Keywords·Highlights 줄을 함께 세어 249낱말을 263으로
+        # 보고한 적이 있다. 상한이 250이라 없는 초과를 만든 셈이다
+        cut = re.search(r"(?im)^\s*[*_]{0,2}(keywords?|highlights?|"
+                        r"key\s*words?|핵심어|키워드)", ab)
+        if cut:
+            ab = ab[:cut.start()].strip()
         n = len([w for w in re.split(r"\s+", ab) if w])
         ok = n <= ab_max
         print("- 초록 %d낱말 (상한 %d) %s" % (n, ab_max, "OK" if ok else "**초과**"))

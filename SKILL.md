@@ -466,6 +466,7 @@ python scripts/progress.py --skip 9 --why "국문판이 없어서"
 
 | 스크립트 | 하는 일 |
 |--|--|
+| `selfcheck.py` | **도구 자체를 검사한다.** 도구를 고쳤으면 먼저 돌린다(보이지 않는 문자·문법·빈 파일) |
 | `progress.py` | **진행 상태와 관문.** 한 턴에 한 단계만 하도록 막는다 |
 | `setup_sound.py` | 검사가 끝나면 소리로 알리는 설정을 넣고 뺀다 (묻고 나서만) |
 | `lit_audit.py` | **가진 논문 폴더 진단** (편수·못 쓰는 파일·연도·중복·인용했는데 원문 없는 것) |
@@ -473,7 +474,7 @@ python scripts/progress.py --skip 9 --why "국문판이 없어서"
 | `check_ngram.py --calibrate [--stability]` | 게재작 문장 리듬 대역 실측. `--stability`는 **몇 편이면 충분한지** |
 | `check_ngram.py <원고>` | 5-gram 겹침 + 리듬 대조 |
 | `cite_sources.py [--ours <원고>]` | **게재작이 어느 저널을 몇 % 인용하는지.** **한 편이 몇 %씩 인용하는지 편별 중앙값·사분위까지.** `--ours`는 우리 목록을 그 대역에 대 본다 |
-| `check_style.py <원고>` | 문체 검사 9종 |
+| `check_style.py <원고> [--txt <코퍼스>]` | 문체 검사 9종. **`--txt`를 주면 이음말·쉼표 대역을 게재작에서 재서 판정** |
 | `manuscript_lint.py <원고>` | 규격·표그림 참조·구성 예고·문단 길이·수치 정합 |
 | `word_census.py <원고>` | 낱말 전수 대조표 (국문 지원) |
 | `word_census.py <원고> --abbr` | **약어 전수 검사** (원고에서 정의했는가, 게재작이 그 약어를 쓰는가) |

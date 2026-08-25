@@ -2,6 +2,9 @@
 """원고 기계 검수기 (저널 무관 일반판).
 
 쓰임:
+  python check_style.py 원고.md --txt <게재작 코퍼스 폴더>
+      **--txt를 주면 이음말 밀도와 쉼표 부담을 게재작에서 재서 판정한다.**
+      안 주면 기본 대역을 쓰는데, 그 값은 **어느 저널에서도 잰 적이 없다.**
   python check_style.py <원고.md> [--config style_config.json]
 
 검사 ①금지어·폐기 수치 ②이음말 밀도 ③약어 미정의 ④소수점 자리
@@ -17,6 +20,7 @@ import io
 import json
 import os
 import re
+import glob
 import sys
 import collections
 
@@ -123,6 +127,55 @@ CFG_DEFAULT = {
 }
 
 
+def corpus_band(txt_dir, conn_words):
+    """게재작에서 이음말 밀도와 쉼표 부담을 재서 대역을 만든다.
+
+    **기본 대역으로 판정하면 안 된다.** 이 도구의 기본값(쪽당 1.5-4.0회)은
+    어느 저널에서도 잰 적이 없는 숫자다. 실제로 그 기본값으로 "대역 밖"이라
+    보고했는데, 목표 저널 51편을 재 보니 사분위 한가운데였다.
+
+    쪽 수는 조판에 달렸으므로 **1,000낱말당**으로 센다.
+    """
+    files = sorted(glob.glob(os.path.join(txt_dir, "*.txt")))
+    dens, comma = [], []
+    for f in files:
+        t = io.open(f, encoding="utf-8", errors="replace").read()
+        # 참고문헌은 뺀다. 서지에는 쉼표가 몰려 있다
+        cands = [m.start() for m in re.finditer("References|Bibliography", t)
+                 if m.start() > len(t) * 0.5]
+        if cands:
+            t = t[:cands[0]]
+        nw = len(re.findall(r"[A-Za-z]+", t))
+        if nw < 2000:
+            continue
+        n = 0
+        for c in conn_words:
+            n += len(re.findall(r"(?<![A-Za-z])" + re.escape(c) +
+                                r"(?![A-Za-z])", t, re.I))
+        dens.append(1000.0 * n / nw)
+        sents = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z])", t)
+                 if len(x.split()) >= 5]
+        if sents:
+            comma.append(100.0 * sum(1 for x in sents if x.count(",") >= 4)
+                         / len(sents))
+    return dens, comma, len(dens)
+
+
+def band_of(vals):
+    v = sorted(vals)
+    n = len(v)
+    return (v[int(n * .25)], v[int(n * .5)], v[int(n * .75)], v[0], v[-1])
+
+
+def opt_txt():
+    """`--txt <게재작 코퍼스 폴더>`. 주면 대역을 거기서 잰다."""
+    if "--txt" in sys.argv:
+        i = sys.argv.index("--txt") + 1
+        if i < len(sys.argv):
+            return sys.argv[i]
+    return None
+
+
 def load_cfg(path):
     cfg = dict(CFG_DEFAULT)
     if path and os.path.exists(path):
@@ -197,13 +250,51 @@ def main(path, cfg_path=None):
     lo, hi = cfg["connective_band"]
     dens = sum(cnt.values()) / pages
     ok = lo <= dens <= hi
-    R += ["", "## ② 이음말 밀도 (대역 %.1f-%.1f회/쪽)" % (lo, hi),
-          "- 단어 약 %s (약 %.1f쪽) / 이음말 %d회 = **쪽당 %.1f회** %s"
-          % ("{:,}".format(nw), pages, sum(cnt.values()), dens,
-             "OK" if ok else "대역 밖 - 적으면 소절 파편화, 많으면 정리"),
-          "- " + ", ".join("%s %d" % (k, v) for k, v in cnt.most_common(8))]
-    if not ok:
-        n_issue += 1
+    comma_judged = None      # 게재작 대역으로 판정했는가
+    txt_dir = opt_txt()
+    if txt_dir:
+        # 게재작에서 재서 판정한다. 기본 대역은 어느 저널 것도 아니다
+        cd_, cc_, n_ = corpus_band(txt_dir, CONN_EN)
+        if n_ >= 5:
+            q1, med, q3, mn, mx = band_of(cd_)
+            per_k = 1000.0 * sum(cnt.values()) / max(1, nw)
+            ok = q1 <= per_k <= q3
+            wide = mn <= per_k <= mx
+            R += ["", "## ② 이음말 밀도 (게재작 %d편 실측)" % n_,
+                  "- 1,000낱말당: 게재작 Q1 %.2f · 중위 **%.2f** · Q3 %.2f"
+                  " (최소 %.2f, 최대 %.2f)" % (q1, med, q3, mn, mx),
+                  "- 우리 **%.2f** → %s" % (per_k, "대역 안(사분위)" if ok else
+                                          ("대역 안(전체 범위)" if wide
+                                           else "**대역 밖**")),
+                  "- " + ", ".join("%s %d" % kv for kv in cnt.most_common(8))]
+            if not ok and not wide:
+                n_issue += 1
+            # 쉼표 부담도 같은 대역으로
+            sents_ = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z])", prose)
+                      if len(x.split()) >= 5]
+            if sents_ and cc_:
+                q1c, medc, q3c, mnc, mxc = band_of(cc_)
+                ours_c = 100.0 * sum(1 for x in sents_ if x.count(",") >= 4)                     / len(sents_)
+                okc = q1c <= ours_c <= q3c
+                R += ["- 쉼표 4개 이상 문장 비율: 게재작 Q1 %.1f%% · 중위"
+                      " **%.1f%%** · Q3 %.1f%% / 우리 **%.1f%%** → %s"
+                      % (q1c, medc, q3c, ours_c,
+                         "대역 안" if okc else "**대역 밖**")]
+                comma_judged = okc
+                if not okc:
+                    n_issue += 1
+            return_early = True
+        else:
+            return_early = False
+    else:
+        return_early = False
+    if not return_early:
+        R += ["", "## ② 이음말 밀도 (대역 %.1f-%.1f회/쪽. **저널에서 잰 값이"
+              " 아니다.** `--txt <게재작 폴더>`를 주면 실측한다)" % (lo, hi),
+              "- 단어 약 %s (약 %.1f쪽) / 이음말 %d회 = **쪽당 %.1f회** %s"
+              % ("{:,}".format(nw), pages, sum(cnt.values()), dens,
+                 "OK" if ok else "대역 밖(기본값 기준이므로 판정 아님)"),
+              "- " + ", ".join("%s %d" % (k, v) for k, v in cnt.most_common(8))]
 
     # ③ 약어 첫 등장 정의
     R += ["", "## ③ 약어 (첫 등장 정의)"]
@@ -221,14 +312,42 @@ def main(path, cfg_path=None):
     R.append(("- 정의 확인 필요: " + ", ".join(bad)) if bad else "통과.")
     n_issue += len(bad)
 
-    # ④ 소수점 자리
+    # ④ 소수점 자리 - **갈래별로** 본다
+    # 백분율이 1자리이고 오즈비가 3자리인 것은 다른 갈래라서지 불일치가
+    # 아니다. 한 통에 넣고 세어 헛된 경고를 낸 적이 있다.
     d = int(cfg["decimals"])
-    short = sorted(set(re.findall(r"(?<!\d)0\.\d{%d}(?!\d)" % (d - 1), prose)))
-    R += ["", "## ④ 소수점 (%d자리 규칙)" % d,
-          ("- %d자리 수치 발견: %s  → 성능 수치면 %d자리로"
-           % (d - 1, ", ".join(short), d)) if short else "통과."]
-    if short:
-        n_issue += 1
+    flat = re.sub(r"[$\{}*]", "", prose)
+    KIND = [("p 값(측정)", r"(?<![A-Za-z])p\s*=\s*(\d*\.\d+)"),
+            ("오즈비", r"(?:OR|odds ratio)\s*=?\s*(\d*\.\d+)"),
+            ("신뢰구간", r"\[\s*(\d*\.\d+)\s*[-–]"),
+            ("AUC", r"(?:AUC|area under the (?:ROC )?curve)[^\d]{0,30}"
+                    r"(\d*\.\d+)"),
+            ("백분율", r"(\d+\.\d+)\s*%"),
+            ("F1·정확도", r"(?:F1|accuracy|precision|recall)[^\d]{0,26}"
+                        r"(\d*\.\d+)")]
+    # 관행으로 굳은 임계값은 자릿수 판정에서 뺀다
+    CONVENTION = {"0.05", "0.01", "0.001", "0.10", "0.5", "0.95", "0.90"}
+    R += ["", "## ④ 소수점 (갈래별)"]
+    mixed = 0
+    for name, pat in KIND:
+        got = collections.Counter()
+        for m in re.finditer(pat, flat, re.I):
+            v = next((g for g in m.groups() if g), None)
+            if not v or v in CONVENTION:
+                continue
+            got[len(v.split(".")[1])] += 1
+        if not got:
+            continue
+        txt = ", ".join("%d자리 %d개" % (k, n) for k, n in sorted(got.items()))
+        if len(got) > 1:
+            mixed += 1
+            R.append("- **%s: %s → 한 갈래 안에서 섞였다**" % (name, txt))
+        else:
+            R.append("- %s: %s" % (name, txt))
+    if not mixed:
+        R.append("- 갈래 안에서 섞인 것 없음. 통과")
+    n_issue += mixed
+    R.append("- (0.05·0.01·0.001 같은 관행 임계값과 정의상 상수는 셈에서 뺐다)")
 
     # ⑤ 쉼표 4개 이상 문장 (인용 괄호·짧은 괄호의 쉼표는 세지 않는다)
     prose_nc = re.sub(r"\((?:[^()]*\d{4}[^()]*)\)", " ", prose)
@@ -236,9 +355,18 @@ def main(path, cfg_path=None):
     longs = [s.strip()[:80] for s in sentences(prose_nc)
              if s.count(",") >= 4 and len(s) > 60]
     R += ["", "## ⑤ 쉼표 4개 이상 문장"]
-    if longs:
+    if comma_judged is not None:
+        # 비율은 ②에서 게재작 대역과 견줬다. 여기서 다시 세지 않는다.
+        # 개수만으로 지적하면 긴 문장을 쓰는 저널에서 전부 걸린다
+        R.append("- 비율 판정은 ②에 있다(게재작 대역 대비 %s)."
+                 " 아래는 눈으로 볼 후보일 뿐 지적이 아니다"
+                 % ("대역 안" if comma_judged else "**대역 밖**"))
+        R += ["- %d개:" % len(longs)] + ["  - %s…" % x for x in longs[:8]]
+    elif longs:
         n_issue += len(longs)
-        R += ["- %d개:" % len(longs)] + ["  - %s…" % s for s in longs[:8]]
+        R += ["- %d개 (**게재작에서 잰 대역이 아니다.** `--txt`를 주면"
+              " 비율로 판정한다):" % len(longs)]
+        R += ["  - %s…" % x for x in longs[:8]]
     else:
         R.append("통과.")
 
