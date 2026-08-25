@@ -191,6 +191,51 @@ def ledger_terms(path):
     return bad_fn, bad_vd, swallowed
 
 
+# 7e에서 한 건을 닫으려면 **게재작에 잰 수**가 있어야 한다.
+# "이 문단 너무 긴가"의 답은 게재작 문단을 재서 나온다. 재지 않고 닫으면
+# 그것은 판정이 아니라 인상이다. 그래서 처리 칸을 채운 행마다 왜 그렇게
+# 정했는지에 **숫자**가 있는지 본다. 잴 수 없는 것이 있다. 원고를 새로
+# 써야 하는 것은 저자가 정하고, 원문이 없어 대조가 안 되는 것은 못 한다고
+# 적는다. 그 둘은 숫자 없이도 닫힌다
+MEASURED = re.compile(r"\d")
+NO_NUMBER_OK = re.compile(r"저자 결정|저자가 정한|못 한다|구해 주시면")
+
+
+def record_basis(path):
+    """기록 대장에서 **잰 수 없이 닫은 행**. (행번호, 처리) 목록."""
+    bad = []
+    if not os.path.exists(path):
+        return bad
+    in_body, header, col = False, None, None
+    for ln in io.open(path, encoding="utf-8", errors="replace"):
+        ln = ln.rstrip()
+        if not ln.startswith("|"):
+            in_body, header, col = False, None, None
+            continue
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if set(ln) <= set("|-: "):
+            in_body = True
+            if header:
+                pi = [i for i, h in enumerate(header) if h.strip() == "처리"]
+                wi = [i for i, h in enumerate(header) if "왜 그렇게" in h]
+                col = (pi[0] if pi else None, wi[0] if wi else None)
+            continue
+        if not in_body:
+            header = cells
+            continue
+        if not col or col[0] is None or col[0] >= len(cells):
+            continue
+        pi, wi = col
+        if not cells[pi]:
+            continue
+        why = cells[wi] if wi is not None and wi < len(cells) else ""
+        if NO_NUMBER_OK.search(cells[pi] + " " + why):
+            continue
+        if not MEASURED.search(why):
+            bad.append((cells[1] if len(cells) > 1 else "?", cells[pi]))
+    return bad
+
+
 def gate(step, d, st):
     """그 단계가 실제로 끝났는가. (통과여부, 설명)"""
     info = dict((s[0], s) for s in STEPS)[step]
@@ -233,6 +278,15 @@ def gate(step, d, st):
             return False, ("판정이 `15` §4-4의 넷(유지·대체·유보·기록)"
                            " 밖인 행 "
                            "**%d개**: %s" % (len(bad_vd), ex))
+        # 기록 대장은 **잰 수로 닫는다**
+        if os.path.basename(path).startswith("기록"):
+            thin = record_basis(path)
+            if thin:
+                ex = ", ".join(n for n, _ in thin[:5])
+                return False, ("게재작에 잰 수 없이 닫은 행 **%d개**: %s. "
+                               "**\"이 문단 너무 긴가\"의 답은 게재작 문단을 "
+                               "재서 나온다.** 못 재는 것이면 `저자 결정`이나 "
+                               "`못 한다`로 적는다" % (len(thin), ex))
         if swallowed:
             ex = ", ".join(n for n, _ in swallowed[:5])
             return False, ("걸린 것을 적어 두고 **유지로 닫은 행 %d개**: %s."

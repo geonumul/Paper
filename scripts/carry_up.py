@@ -78,10 +78,16 @@ def marked_rows(path, layer):
             in_body = True
             if header:
                 vi = [i for i, h in enumerate(header) if "판정" in h]
+                # **왜 걸렸는지를 통째로 가져온다.**
+                # 전에는 근거 칸 하나만 가져왔다. 그런데 문장이 길다고
+                # 걸린 행은 그 이유가 흐름 칸에 있고, 주장이 세다고 걸린
+                # 행은 논리 칸에 있다. 한 칸만 가져오면 기록 대장이
+                # "번호와 판정"만 남아 무엇을 정하라는 것인지 알 수 없다.
+                # 실제로 그렇게 되어 117행을 갈래로 묶는 데 두 번 실패했다
                 ei = [i for i, h in enumerate(header)
-                      if "근거" in h or "흐름" in h]
-                col = (vi[0] if vi else len(cells) - 1,
-                       ei[-1] if ei else None)
+                      if ("근거" in h or "문법" in h or "논리" in h
+                          or "흐름" in h or "빌드업" in h or "메시지" in h)]
+                col = (vi[0] if vi else len(cells) - 1, ei)
             continue
         if not in_body:
             header = cells
@@ -94,7 +100,10 @@ def marked_rows(path, layer):
         verd = cells[vi]
         if "기록" not in verd:
             continue
-        why = cells[ei] if ei is not None and ei < len(cells) else ""
+        # ★가 붙은 칸이 먼저다. 거기에 왜 걸렸는지가 적혀 있다
+        parts = [cells[i] for i in (ei or []) if i < len(cells) and cells[i]]
+        parts.sort(key=lambda x: 0 if "★" in x else 1)
+        why = " / ".join(parts)
         rows.append((layer, cells[0], cells[1] if len(cells) > 1 else "",
                      verd, re.sub(r"\s+", " ", why)[:220]))
     return rows
@@ -170,12 +179,12 @@ def main():
         print("- %s 층 **%d개**" % (layer, len(by[layer])))
     print("")
 
-    lines = ["| 층 | 번호 | 무엇 | 판정 | 처리 | 왜 그렇게 정했나 |",
+    lines = ["| 층 | 번호 | 왜 걸렸나 | 판정 | 처리 | 왜 그렇게 정했나 |",
              "|--|--|--|--|--|--|"]
     for layer, no, what, verd, why in rows:
         p, r = keep.get((layer, no), ("", ""))
         lines.append("| %s | %s | %s | %s | %s | %s |"
-                     % (layer, no, (what or why)[:110], verd, p, r))
+                     % (layer, no, (why or what)[:300], verd, p, r))
 
     if "--apply" not in sys.argv:
         print("\n".join(lines[:2] + lines[2:14]))
