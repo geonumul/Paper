@@ -47,7 +47,7 @@ VS Code나 터미널에서 Claude Code를 켜고 **이렇게 말하면 된다.**
    `python ~/.claude/skills/paper-to-journal/scripts/setup_sound.py --on`.
    **묻지 않고 설정을 바꾸지 않는다**
 5. **껐다 켜라고 알린다.** 스킬 목록은 켤 때 한 번 읽는다
-6. 다시 켜면 `/paper-to-journal` 로 시작한다. 그 뒤 절차는 `SKILL.md` §0-A
+6. 다시 켜면 `/paper-to-journal` 로 시작한다. 그 뒤 절차는 `SKILL.md` 0항-A
 
 **사용자에게 명령어를 치게 하지 않는다.** 위 명령은 Claude가 실행하고, 사용자는
 허락만 누르면 된다.

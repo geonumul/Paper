@@ -130,7 +130,7 @@ def ledger_rows(path):
     return total, blank
 
 
-# `15` §4-1의 기능 열 갈래와 §4-4의 판정 셋. **여기 없는 이름은 안 쓴다.**
+# `15` 4-1항의 기능 열 갈래와 4-4항의 판정 셋. **여기 없는 이름은 안 쓴다.**
 # 갈래를 지어 쓰면 게재작에서 같은 기능을 찾을 수가 없고, 근거가 자리도
 # 기능도 다른 문장이 된다. 실제로 "서술", "결과 수치" 같은 이름을 지어
 # 쓰다가 한 층의 근거가 통째로 어긋났다
@@ -270,12 +270,12 @@ def gate(step, d, st):
         bad_fn, bad_vd, swallowed = ledger_terms(path)
         if bad_fn:
             ex = ", ".join("%s(%s)" % (n, v) for n, v in bad_fn[:4])
-            return False, ("기능이 `15` §4-1의 열 갈래 밖인 행 **%d개**: %s. "
+            return False, ("기능이 `15` 4-1항의 열 갈래 밖인 행 **%d개**: %s. "
                            "**갈래를 지어 쓰면 게재작에서 같은 기능을 찾을 수"
                            " 없다**" % (len(bad_fn), ex))
         if bad_vd:
             ex = ", ".join("%s(%s)" % (n, v) for n, v in bad_vd[:4])
-            return False, ("판정이 `15` §4-4의 넷(유지·대체·유보·기록)"
+            return False, ("판정이 `15` 4-4항의 넷(유지·대체·유보·기록)"
                            " 밖인 행 "
                            "**%d개**: %s" % (len(bad_vd), ex))
         # 기록 대장은 **잰 수로 닫는다**

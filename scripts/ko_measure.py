@@ -27,7 +27,7 @@ from collections import Counter
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-# 기능별 종결어미 (06_국문문체.md §2)
+# 기능별 종결어미 (06_국문문체.md 2항)
 ENDINGS = [
     ("사실 보고", r"(하였다|되었다|나타났다|확인되었다|보였다|이다|였다)\."),
     ("해석", r"(로 해석된다|해석할 수 있다|볼 수 있다|판단된다)\."),
