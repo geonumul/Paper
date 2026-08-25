@@ -13,6 +13,7 @@
 무엇을 보나
   목표 저널에 실린 논문들의 참고문헌에서 **저널 이름**을 뽑아 분포를 낸다.
   - 그 저널이 자기 저널을 몇 % 인용하는가
+  - **한 편이 각 저널을 몇 %씩 인용하는가**(편별 중앙값·사분위. 우리 원고가 맞출 대역은 이쪽이다)
   - 어느 저널을 주로 인용하는가 (상위 목록)
   - 우리 원고의 인용 분포와 견줄 기준이 된다
 
@@ -26,6 +27,7 @@ import os
 import re
 import sys
 import glob
+import statistics
 from collections import Counter, defaultdict
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -91,24 +93,75 @@ def journals_of(body):
     return c
 
 
+def per_paper_report(per_paper, total, top, mine=None, n_mine=0):
+    """한 편이 각 저널을 몇 %씩 인용하는지 (편별 분포).
+
+    전체를 한 통에 넣고 세면 참고문헌이 많은 한두 편이 값을 끈다.
+    편마다 따로 세서 중앙값과 범위를 내야 "한 편의 정상 범위"가 된다.
+    """
+    L = ["", "## 한 편이 몇 %씩 인용하나 (편별 분포)", ""]
+    L.append("- 게재작 %d편을 **한 편씩 따로** 세서 낸 분포다. 앞의 표(전체를"
+             " 한 통에 넣고 센 값)와 다를 수 있다" % len(per_paper))
+    L.append("- **우리 원고 한 편이 맞춰야 할 대역은 이쪽이다**")
+    L.append("")
+    head = "| 저널 | 중앙값 | 사분위(25-75%) | 최소-최대 | 인용하는 편수 |"
+    if mine is not None:
+        head = head + " 우리 | 판정 |"
+    L.append(head)
+    L.append("|--|--|--|--|--|" + ("--|--|" if mine is not None else ""))
+    for k, _ in total.most_common(top):
+        shares = []
+        for _, c in per_paper:
+            tot = sum(c.values())
+            shares.append(100.0 * c.get(k, 0) / tot if tot else 0.0)
+        used_n = sum(1 for x in shares if x > 0)
+        shares.sort()
+        med = statistics.median(shares)
+        if len(shares) >= 4:
+            q = statistics.quantiles(shares, n=4)
+            q1, q3 = q[0], q[2]
+        else:
+            q1, q3 = shares[0], shares[-1]
+        label = max(LABEL[k], key=len) if LABEL[k] else k
+        row = ("| %s | %.1f%% | %.1f-%.1f%% | %.1f-%.1f%% | %d/%d편 |"
+               % (label, med, q1, q3, shares[0], shares[-1],
+                  used_n, len(per_paper)))
+        if mine is not None:
+            ours = 100.0 * mine.get(k, 0) / n_mine if n_mine else 0.0
+            if ours < q1:
+                v = "**대역 아래**"
+            elif ours > q3:
+                v = "대역 위"
+            else:
+                v = "대역 안"
+            row = row + " %.1f%% | %s |" % (ours, v)
+        L.append(row)
+    L.append("")
+    L.append("**사분위 25-75%가 실질 대역이다.** 우리 값이 그 밖이면 왜 그런지"
+             " 답할 수 있어야 한다. 대역 아래면 그 학계가 읽는 것을 안 읽은")
+    L.append("것이고, 대역 위면 한쪽에 치우친 것이다. **다만 맞추려고 인용을"
+             " 끼우지 않는다**(§1-2-2).")
+    return L
+
+
 def compare_ours(path, total, n_ref_total, top):
     """우리 참고문헌 분포를 게재작 분포와 나란히 놓는다."""
     L = ["", "## 우리 원고와 나란히 보기"]
     if not os.path.exists(path):
-        return L + ["", "- 원고를 못 찾았다: %s" % path]
+        return L + ["", "- 원고를 못 찾았다: %s" % path], None, 0
     raw = re.sub(r"-\s*\n\s*", "", open(path, encoding="utf-8",
                                         errors="replace").read())
     body = refs_of(raw)
     if not body:
         return L + ["", "- 원고에서 참고문헌 절을 못 찾았다."
-                        " 제목이 `References`인지 확인하라"]
+                        " 제목이 `References`인지 확인하라"], None, 0
     # 원고가 markdown이면 저널 이름이 *기울임*으로 싸여 있다. 걷어낸다
     body = body.replace("*", "").replace("_", " ")
     mine = journals_of(body)
     n_mine = sum(mine.values())
     if n_mine < 5:
         return L + ["", "- 원고 참고문헌에서 저널 이름을 %d개밖에 못 뽑았다."
-                        " 형식을 확인하라" % n_mine]
+                        " 형식을 확인하라" % n_mine], None, 0
     L.append("")
     L.append("- 우리 참고문헌에서 뽑힌 항목 **%d개** (게재작 쪽은 %d개)"
              % (n_mine, n_ref_total))
@@ -145,7 +198,7 @@ def compare_ours(path, total, n_ref_total, top):
     L.append("우리 문장이 하는 말을 그 논문이 실제로 하는지 확인한 것만"
              " 인용한다(`17_인용검증.md`). 맥락이 안 맞으면 인용하지 않고,")
     L.append("그 자리는 비율이 모자란 채로 둔다.")
-    return L
+    return L, mine, n_mine
 
 
 def main():
@@ -223,8 +276,11 @@ def main():
                  " `--self \"저널 이름\"`" % (label, 100.0 * n / n_ref_total))
 
     ours = opt("--ours")
+    mine, n_mine = None, 0
     if ours:
-        L.extend(compare_ours(ours, total, n_ref_total, top))
+        block, mine, n_mine = compare_ours(ours, total, n_ref_total, top)
+        L.extend(block)
+    L.extend(per_paper_report(per_paper, total, top, mine, n_mine))
 
     L.append("")
     L.append("## 어떻게 쓰나")
