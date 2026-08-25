@@ -155,17 +155,44 @@ def main():
                          % (sec, idx, k, title[:14],
                             sent[:70].replace("|", "/")))
     else:
-        L.append("## 절별 개수")
+        # 소절 · 장 · 전체 대장. 여기도 행마다 근거와 판정을 채워야 닫힌다
+        chaps = []
+        for sec, title in secs:
+            top_ = sec.split(".")[0]
+            if not chaps or chaps[-1][0] != top_:
+                chaps.append((top_, title))
+        L.append("## 소절 대장 (%d행)" % len(secs))
         L.append("")
-        L.append("| 절 | 제목 | 문단 | 문장 |")
-        L.append("|--|--|--|--|")
+        L.append("| 절 | 제목 | 문단 | 문장 | 목적 한 줄 | 게재작 근거 | 판정 |")
+        L.append("|--|--|--|--|--|--|--|")
         for sec, title in secs:
             bs = [b for b in blocks if b[0] == sec]
-            L.append("| %s | %s | %d | %d |"
+            L.append("| %s | %s | %d | %d |  |  |  |"
                      % (sec, title[:40], len(bs),
                         sum(len(split_sentences(b[3])) for b in bs)))
         L.append("")
-        L.append("`--paras` 또는 `--sents`로 대장을 만든다.")
+        L.append("## 장 대장 (%d행)" % len(chaps))
+        L.append("")
+        L.append("| 장 | 제목 | 소절 | 서두 예고와 소절이 맞는가 |"
+                 " 나열인가 연쇄인가 | 게재작 근거 | 판정 |")
+        L.append("|--|--|--|--|--|--|--|")
+        for top_, title in chaps:
+            n = sum(1 for sec, _ in secs if sec.split(".")[0] == top_)
+            L.append("| %s | %s | %d |  |  |  |  |" % (top_, title[:40], n))
+        L.append("")
+        L.append("## 전체 대장 (5행)")
+        L.append("")
+        L.append("| 항목 | 보는 것 | 게재작 근거 | 판정 |")
+        L.append("|--|--|--|--|")
+        for item, what in (("후렴", "같은 말을 몇 번 반복하는가"),
+                           ("구성 예고", "예고한 절과 실제 절이 맞는가"),
+                           ("삼중 수치 정합", "표·본문·초록의 수치가 같은가"),
+                           ("용어 일관", "한 낱말이 한 뜻으로만 쓰이는가"),
+                           ("연구 질문과 결론", "물음마다 답이 있는가")):
+            L.append("| %s | %s |  |  |" % (item, what))
+        L.append("")
+        L.append("**근거 칸에는 게재작의 어느 논문 어느 자리인지 적는다.**"
+                 " 문단·문장 대장은 `--paras`, `--sents`로 따로 만든다.")
 
     if not out:
         # 대화창에 수백 행을 찍지 않는다. 전체는 --out 으로 파일에 쓴다
