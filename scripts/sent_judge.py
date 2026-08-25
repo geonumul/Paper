@@ -9,7 +9,8 @@
 
   python sent_judge.py 문장_대장.md 1 25 --md 원고.md --txt <코퍼스> --apply
 
-      대장에 기능·근거·판정을 적는다. **못 정한 행은 안 적는다**
+      **비어 있는** 기능·근거만 적는다. 판정 칸과 사람이 적어
+      둔 칸은 건드리지 않는다
 
   python sent_judge.py 문장_대장.md 1 25 --md 원고.md --txt <코퍼스> --verify
 
@@ -498,7 +499,7 @@ def main():
         print("**대장에 적으려면 `--apply`.** 못 정한 행은 비워 둔다.")
         return
 
-    out, n_w = [], 0
+    out, n_w, left_alone = [], 0, 0
     seen_row = 0
     for ln in io.open(led, encoding="utf-8"):
         cells = [c.strip() for c in ln.rstrip().strip("|").split("|")]
@@ -508,15 +509,30 @@ def main():
         seen_row += 1
         if seen_row in got:
             fn, ev, gram, logic, flow, verd = got[seen_row]
-            out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n"
-                       % (cells[0], cells[1], cells[2], fn, ev, gram, logic,
-                          flow, verd))
-            n_w += 1
+            # **사람이 적어 둔 칸을 기계가 덮지 않는다.**
+            # 이 자리에서 사고가 났다. 빈 판정을 그대로 써 넣는 바람에 이미
+            # 적혀 있던 판정 82행이 지워졌고 그중 ★가 셋이었다. 백업이
+            # 없었으면 되돌릴 수 없었다.
+            # 기계가 채우는 것은 **비어 있는 칸뿐이다.**
+            def keep(old, new):
+                return old if old and old != "-" else new
+            row = [cells[0], cells[1], cells[2],
+                   keep(cells[3], fn), keep(cells[4], ev),
+                   keep(cells[5], gram), keep(cells[6], logic),
+                   keep(cells[7], flow), cells[8]]
+            if row == cells:
+                left_alone += 1
+            else:
+                n_w += 1
+            out.append("| %s |\n" % " | ".join(row))
         else:
             out.append(ln)
     io.open(led, "w", encoding="utf-8", newline="\n").write("".join(out))
-    print("대장 %d행에 **기능과 근거만** 적었다. 못 정한 %d행은 그것도 비어"
-          " 있다." % (n_w, len(left)))
+    print("대장 %d행에 **비어 있던 기능·근거만** 적었다. 못 정한 %d행은"
+          " 그것도 비어 있다." % (n_w, len(left)))
+    if left_alone:
+        print("- 이미 채워져 있어 **그대로 둔 행 %d개.** 사람이 적어 둔 칸은"
+              " 기계가 안 덮는다" % left_alone)
     print("")
     print("**판정 칸은 비워 두었다.** 위의 행을 한 행씩 읽고 유지·대체·유보를"
           " 사람이 적는다. 관문은 판정 칸이 다 차기 전에는 이 단계를 안 닫는다.")
