@@ -154,8 +154,11 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     # 바꾸면 조사표와 어긋나므로 게재작에 없다고 고칠 일이 아니다
     win = r"[^.]{0,70}(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])[^.]{0,70}"
     near = re.search(win, prose + " " + tables, re.I)
-    if near and re.search(r"(?<![A-Za-z])[A-Z]{1,3}\d{1,3}(?![A-Za-z0-9])",
-                          near.group(0)):
+    # 코드처럼 보이는 것을 다 문항 코드로 보면 안 된다. `F1`, `R2`, `H1`이
+    # 걸려서 **결과표의 지표 이름**(precision, recall, F1)이 원자료 용어로
+    # 판정된 적이 있다. 문항 코드는 Q로 시작하는 것만 인정한다
+    if near and re.search(r"(?<![A-Za-z])(?:S?Q\d{1,3}|item\s+\d{1,3})"
+                          r"(?![A-Za-z0-9])", near.group(0)):
         return ("유지", "조사표 항목 코드 옆에서 원자료를 가리킨다: %s"
                 % re.sub(r"\s+", " ", near.group(0)).strip()[:90])
     if not has(prose, w) and has(tables, w):
