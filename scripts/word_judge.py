@@ -6,6 +6,9 @@
       그 구간을 갈래로 갈라 보여 준다 (대장은 안 건드린다)
   python word_judge.py 대장.md 61 120 --md 원고.md --txt <코퍼스> --apply
       갈래로 갈린 행에 판정과 근거를 적는다. **남은 것은 안 적는다**
+  python word_judge.py 대장.md 61 120 --md 원고.md --txt <코퍼스> --verify
+      **이미 적힌 근거가 사실인지 되짚는다.** 근거가 댄 논문에 그 낱말이
+      실제로 있는지, 인용한 문장이 그 논문에 있는지 확인한다
 
 왜 필요한가
   낱말이 1,500개면 한 턴 60행으로도 스물다섯 턴이다. 행마다 손으로 근거를
@@ -173,6 +176,61 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     return None
 
 
+def verify(led, a, b, docs, parts):
+    """이미 적힌 근거가 사실인지 되짚는다.
+
+    대장의 근거는 기계가 쓴 것이다. 아무도 되짚지 않으면 그대로 굳는다.
+    세 가지를 본다.
+
+      1 근거가 이름 댄 논문에 그 낱말이 실제로 있는가
+      2 인용한 문장이 그 논문에 실제로 있는가
+      3 "참고문헌에만 있다"고 적힌 낱말이 정말 본문에 없는가
+
+    **한 줄이라도 안 맞으면 그 배치의 판정을 다시 본다.**
+    """
+    prose, tables, caps, math, refs = parts
+    byname = dict(docs)
+    rows, bad, checked = rows_of(led), [], 0
+    for n, w, freq, cnt, note in rows:
+        if not (a <= n <= b):
+            continue
+        line = None
+        for ln in io.open(led, encoding="utf-8"):
+            if re.match(r"\|\s*%d\s*\|" % n, ln):
+                line = ln
+                break
+        if not line:
+            continue
+        cells = [c.strip() for c in line.rstrip().strip("|").split("|")]
+        if len(cells) < 8 or not cells[-1]:
+            continue
+        ev = cells[-1]
+        checked += 1
+        m = re.search(r"\[([^\]]+)\]\s*(.*)$", ev)
+        if m:
+            name, quote = m.group(1), m.group(2).strip()
+            t = byname.get(name)
+            if t is None:
+                bad.append((n, w, "근거가 댄 논문이 코퍼스에 없다: %s" % name))
+                continue
+            head = re.sub(r"\s+", " ", quote)[:40]
+            if head and re.sub(r"\s+", " ", t).find(head) < 0:
+                bad.append((n, w, "인용한 문장이 그 논문에 없다: %s…" % head))
+        if "참고문헌에만" in ev and (has(prose, w) or has(tables, w)):
+            bad.append((n, w, "본문에도 있는데 참고문헌에만 있다고 적혔다"))
+        if "수식 안" in ev and (has(prose, w) or has(tables, w)):
+            bad.append((n, w, "본문에도 있는데 수식이라고 적혔다"))
+    print("# 근거 되짚기 · %d-%d행" % (a, b))
+    print("")
+    print("- 근거가 적힌 행 **%d개** 중 어긋난 것 **%d개**" % (checked, len(bad)))
+    for n, w, why in bad[:20]:
+        print("    - #%d %s: %s" % (n, w, why))
+    if not bad and checked:
+        print("- 전부 확인됐다. 근거가 댄 논문에 그 낱말과 문장이 실제로 있다")
+    if not checked:
+        print("- 그 구간에 아직 근거가 적힌 행이 없다")
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if len(args) < 3:
@@ -191,6 +249,9 @@ def main():
         return
     parts = split_manuscript(io.open(md_path, encoding="utf-8",
                                      errors="replace").read())
+    if "--verify" in sys.argv:
+        verify(led, a, b, docs, parts)
+        return
     rows = [r for r in rows_of(led) if a <= r[0] <= b]
     if not rows:
         print("그 구간에 행이 없다: %d-%d" % (a, b))
