@@ -113,7 +113,40 @@ def existing(path):
 
 
 def main():
+    # **틀리게 부른 것을 0으로 답하지 않는다.**
+    # `carry_up.py <대장> --out <파일>`처럼 부른 일이 있었다. 이 도구는
+    # 위치 인자를 안 받으므로 그 대장을 무시하고 기본 폴더를 뒤졌고,
+    # 아무것도 없으니 "넘어온 것이 없다"고 답했다. 부르는 쪽은 그 말을
+    # 사실로 읽는다. **0은 답이 아니라 신호다.**
+    stray = [a for a in sys.argv[1:] if not a.startswith("--")]
+    known = {"--dir", "--apply"}
+    for i, a in enumerate(sys.argv[1:], 1):
+        if a == "--dir" and i < len(sys.argv) - 1:
+            stray = [x for x in stray if x != sys.argv[i + 1]]
+    bad = [a for a in sys.argv[1:] if a.startswith("--") and a not in known]
+    if stray or bad:
+        print("**부르는 법이 틀렸다.** 이 도구는 `--dir`과 `--apply`만 받는다.")
+        if stray:
+            print("- 자리 인자 %s 는 안 받는다. 대장을 하나씩 주는 것이"
+                  " 아니라 **폴더째** 준다" % ", ".join(stray))
+        if bad:
+            print("- 모르는 이름 %s" % ", ".join(bad))
+        print("")
+        print("  python carry_up.py --dir outputs")
+        print("  python carry_up.py --dir outputs --apply")
+        sys.exit(2)
+
     d = opt("--dir", "outputs")
+    if not os.path.isdir(d):
+        print("그런 폴더가 없다: %s" % d)
+        print("**0개라고 답하지 않는다.** 폴더를 못 찾은 것과 넘어온 것이"
+              " 없는 것은 다르다")
+        sys.exit(2)
+    seen_ledger = [fn for fn, _ in LAYERS if os.path.exists(os.path.join(d, fn))]
+    if not seen_ledger:
+        print("그 폴더에 층 대장이 하나도 없다: %s" % d)
+        print("- 찾는 이름: %s" % ", ".join(fn for fn, _ in LAYERS[:4]))
+        sys.exit(2)
     rows = []
     for fn, layer in LAYERS:
         rows += marked_rows(os.path.join(d, fn), layer)

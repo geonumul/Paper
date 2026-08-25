@@ -150,6 +150,24 @@ ABBR = (r"(?<!et al)(?<!e\.g)(?<!i\.e)(?<!cf)(?<!vs)(?<!Fig)"
         r"(?<!Tab)(?<!No)(?<!approx)(?<!Dr)(?<!St)(?<![A-Z])")
 SENT_END = re.compile(ABBR + r"[.!?](?=\s+[\"'(“]?[A-Z0-9])")
 
+# 대장에는 본문 문장만 있는 것이 아니다. **서지 항목·표 주석·그림 캡션도
+# 한 행씩 들어 있다.** 그것들에 게재작 문장을 근거로 붙이면, 서지 한 줄에
+# "같은 기능의 게재작 문장"이 달리는 꼴이 된다. 실제로 한 대장에서 서지
+# 310행에 근거가 붙었다. 낱말 층에서 참고문헌 제목을 근거로 뽑아 93행이
+# 어긋났던 것과 같은 갈래다
+REF_ENTRY = re.compile(r"^[A-Z][A-Za-zÀ-ÿ'-]+,\s+[A-Z]\.")
+REF_YEAR = re.compile(r"\(\d{4}[a-z]?\)|,\s*\d{4}[a-z]?\.")
+CAPTION = re.compile(r"^\**\s*(Note|Table|Fig(\.|ure)?)\b")
+
+
+def non_prose(no, s):
+    """본문 문장이 아닌 행인가. 서지·표 주석·그림 캡션."""
+    s = s.strip()
+    if no.startswith("References-") or CAPTION.match(s):
+        return True
+    return bool(REF_ENTRY.match(s) and REF_YEAR.search(s))
+
+
 BAD_MARKS = '?"‘’“”–—*|'
 CLEAN_RUN = re.compile(r"[A-Za-z][A-Za-z0-9 ,]+")
 _FLAT = {}
@@ -420,13 +438,16 @@ def main():
         m = SENT_END.search(md_body, p)
         return md_body[p:m.end()].strip() if m else key
 
-    got, left, read = {}, [], []
+    got, left, read, skipped = {}, [], [], 0
     prev = ""
     for i, c in enumerate(rows, 1):
         if not (a <= i <= b):
             prev = whole(c[2])
             continue
         no, sec, s = c[0], c[1], whole(c[2])
+        if non_prose(no, c[2]):
+            skipped += 1
+            continue
         fn = function_of(s)
         ev = pick_evidence(idx, fn, s) if fn else None
         gram, logic, flow = checks(s, prev, cut99, no)
@@ -446,6 +467,12 @@ def main():
         got[i] = (fn, ev, gram, logic, flow, "")
         read.append((i, no, s, fn, ev, " / ".join(bad) or "기계 검사 이상 없음"))
 
+    if skipped:
+        print("- 본문 문장이 아니라 **건너뛴 행 %d개**"
+              " (서지 항목·표 주석·그림 캡션). 이런 행에 게재작"
+              " 문장을 근거로 붙이면 서지 한 줄에 같은 기능의"
+              " 선례가 달리는 꼴이 된다" % skipped)
+        print("")
     print("## 이 몫의 %d행. **한 행씩 읽고 판정한다**" % len(read))
     print("")
     print("- 판정은 `15` §4-4의 넷 중 하나다:"
