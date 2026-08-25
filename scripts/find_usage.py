@@ -24,6 +24,9 @@ import glob
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _norm import norm_text, suspicious_zero   # noqa: E402
+
 DEF_TXT = "literature/_txt"
 
 
@@ -31,6 +34,9 @@ def opt(name, default=None):
     if name in sys.argv:
         return sys.argv[sys.argv.index(name) + 1]
     return default
+
+
+
 
 
 def split_sentences(text):
@@ -68,8 +74,8 @@ def main():
     for f in files:
         if shown_files >= max_files:
             break
-        sents = split_sentences(
-            open(f, encoding="utf-8", errors="replace").read())
+        sents = split_sentences(norm_text(
+            open(f, encoding="utf-8", errors="replace").read()))
         hits = [i for i, s in enumerate(sents) if pat.search(s)]
         if not hits:
             continue

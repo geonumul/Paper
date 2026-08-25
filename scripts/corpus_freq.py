@@ -20,6 +20,9 @@ import glob
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _norm import norm_text, suspicious_zero   # noqa: E402
+
 DEF_TXT = "literature/_txt"
 
 
@@ -27,6 +30,9 @@ def opt(name, default=None):
     if name in sys.argv:
         return sys.argv[sys.argv.index(name) + 1]
     return default
+
+
+
 
 
 def main():
@@ -49,7 +55,8 @@ def main():
     texts = []
     for f in files:
         texts.append((os.path.basename(f),
-                      open(f, encoding="utf-8", errors="replace").read()))
+                      norm_text(open(f, encoding="utf-8",
+                                     errors="replace").read())))
 
     print("코퍼스 %d편 (%s%s)\n" % (len(texts), txt_dir,
                                   ", 표식 '%s'" % mark if mark else ""))
@@ -71,6 +78,11 @@ def main():
         pct = 100.0 * n / len(texts)
         verdict = "채택 가능" if pct >= 8 else "8% 미만 - 걷어내거나 풀어 쓴다"
         print("|%s|%d|%.1f%%|%s|" % (t, n, pct, verdict))
+        warn = suspicious_zero(n, len(texts), t)
+        if warn:
+            print("")
+            print("> " + warn)
+            print("")
 
     if ctx_bank:
         print("\n## 쓰인 자리 (맥락 확인)")
