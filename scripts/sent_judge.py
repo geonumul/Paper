@@ -576,9 +576,15 @@ def main():
 def verify(rows, a, b, docs):
     """적힌 근거가 사실인지, 기능이 열 갈래 안인지 되짚는다."""
     byname = dict((d[0], d[1]) for d in docs)
-    bad, checked, mute, wrong_fn = [], 0, [], []
+    bad, checked, mute, wrong_fn, skipped = [], 0, [], [], 0
     for i, c in enumerate(rows, 1):
         if not (a <= i <= b) or not c[8]:
+            continue
+        # **적기가 건너뛴 행은 되짚기도 건너뛴다.** 한쪽에서 걸러낸 것을
+        # 다른 쪽에서 안 걸러내면, 서지 310행이 "근거가 없다"로 쌓여
+        # 진짜 빈 행이 그 속에 묻힌다
+        if non_prose(c[0], c[2]):
+            skipped += 1
             continue
         checked += 1
         fn, ev = c[3], c[4]
@@ -599,6 +605,15 @@ def verify(rows, a, b, docs):
     print("# 문장 근거 되짚기 · %d-%d행" % (a, b))
     print("")
     print("- 판정이 적힌 행 **%d개** 중 어긋난 것 **%d개**" % (checked, len(bad)))
+    if skipped:
+        print("- 본문 문장이 아니라 건너뛴 행 %d개 (서지·표 주석·그림 캡션)"
+              % skipped)
+    if bad:
+        print("")
+        print("**대괄호는 `[논문] 인용문` 한 가지 뜻으로만 쓴다.** 대괄호 뒤에"
+              " 오는 글을 그 논문의 문장으로 읽고 원문과 맞춰 본다. 인용이"
+              " 아니라 가리키기만 할 때는 **대괄호를 떼고** 논문 이름을 그냥"
+              " 적는다. 그러지 않으면 안 한 대조를 한 것처럼 적히게 된다")
     for i, no, why in bad[:20]:
         print("    - [%d행 %s] %s" % (i, no, why))
     if wrong_fn:
