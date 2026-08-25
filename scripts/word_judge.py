@@ -67,8 +67,14 @@ def stem_of(w):
     return w
 
 
-def papers_with(docs, pat):
-    rx = re.compile(pat, re.I)
+def papers_with(docs, pat, exact_case=False):
+    """그 표현이 나오는 게재작 이름들.
+
+    exact_case=True면 **소문자 그대로만** 찾는다. 고유명을 굴절형으로
+    오인하는 것을 막는다. `bullet`이 저널 이름 *Bulletin*으로, `rose`가
+    저자 성 *Rosen*으로 잡힌 적이 있다.
+    """
+    rx = re.compile(pat) if exact_case else re.compile(pat, re.I)
     return [n for n, t in docs if rx.search(t)]
 
 
@@ -173,12 +179,20 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
                                r"[a-z]{0,5}(?![A-Za-z])")
             return ("유지", "그 꼴만 없고 어간 '%s'가 게재작 %d편에 있다. [%s] %s"
                     % (st, len(sp), p, s))
-    # 낱말을 앞머리로 하는 다른 꼴을 게재작이 쓰는가 (overfit -> overfitting)
-    longer = papers_with(docs, r"(?<![A-Za-z])" + re.escape(w.lower()) +
-                         r"[a-z]{1,6}(?![A-Za-z])")
-    if 100.0 * len(longer) / max(1, n_docs) >= 8:
-        p, s = sentence_in(docs, r"(?<![A-Za-z])" + re.escape(w.lower()) +
-                           r"[a-z]{1,6}(?![A-Za-z])")
+    # 낱말을 앞머리로 하는 **굴절형**을 게재작이 쓰는가
+    # (overfit -> overfitting). 아무 글자나 붙은 것을 같은 말로 보면
+    # 안 된다. bullet에 in이 붙은 Bulletin은 다른 낱말이다
+    SUF = "(?:s|es|ed|d|ing|ly|ies|ment|ments|ation|ations|al)"
+    longer = papers_with(docs, r"(?<![A-Za-z])" + re.escape(w.lower())
+                         + SUF + r"(?![A-Za-z])", exact_case=True)
+    # 이 갈래는 "흔한가"가 아니라 "우리 꼴보다 그쪽이 더 자주 쓰이는가"를
+    # 묻는다. 그래서 8% 문턱을 쓰지 않는다. 두 편 이상이고 우리 꼴보다
+    # 많으면 저자에게 알린다 (판정이 아니라 후보다)
+    # **우리 꼴이 게재작에 아예 없을 때만** 알린다. 단수와 복수가 갈리는
+    # 정도로는 알리지 않는다. 그건 문체가 아니라 문법 선택이다
+    if cnt == 0 and len(longer) >= 2:
+        p, s = sentence_in(docs, r"(?<![A-Za-z])" + re.escape(w.lower())
+                           + SUF + r"(?![A-Za-z])")
         return ("★ 다른 꼴", "이 꼴은 게재작 %d편, 그러나 **같은 말의 다른 꼴을"
                           " %d편이 쓴다.** [%s] %s → 저자가 정한다"
                 % (cnt, len(longer), p, s))
