@@ -4,7 +4,7 @@
 쓰임:
   python ko_measure.py 원고_국문.md
   python ko_measure.py 원고_국문.md --ref 정본원고.txt      # 정본과 나란히
-  python ko_measure.py --ref 정본원고.txt --calibrate        # 정본 대역만 재기
+  python ko_measure.py --ref 정본원고.txt                    # 정본만 재기
 
 왜 쓰나
   국문 문체의 정본은 사용자가 이미 쓴 학술 원고다(`06_국문문체.md`).

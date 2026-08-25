@@ -9,6 +9,7 @@
   python word_census.py 원고_국문.md --ko --txt <국문코퍼스폴더>   # 국문 원고
   python word_census.py 원고.md --min-freq 1       # 한 번 나온 낱말도 전부
   python word_census.py 원고.md --out 대조표.md    # 파일로
+  python word_census.py 원고.md --config style_config.json   # 설정 파일 지정
 
 왜 쓰나
   낱말 층 검수는 **전수**여야 한다. "몇 개를 확인했다"로 끝내면 반드시 놓친다.
@@ -30,6 +31,8 @@ import glob
 from collections import Counter
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+LFC = chr(10)   # 줄바꿈 (문자열 안 escape 사고 방지)
 
 # 판정 대상이 아닌 것: 기능어
 STOP = set("""a an the and or but if while of in on at to for from by with without
@@ -281,6 +284,17 @@ def main():
              " 자리와 연어·강도·정의를 붙이는가)을 문장으로 확인한다.")
     text = "\n".join(L)
 
+    if not out:
+        # 대화창에 수천 행을 찍지 않는다. 전체는 --out 으로 파일에 쓴다
+        top = int(opt("--top", 40))
+        lines_ = text.split(LFC)
+        head_end = next((i for i, l in enumerate(lines_)
+                         if l.startswith("|--")), len(lines_))
+        body_rows = [l for l in lines_[head_end + 1:] if l.startswith("| ")]
+        text = LFC.join(lines_[:head_end + 1] + body_rows[:top])
+        text += (LFC + LFC + "**화면에는 위험한 순으로 %d행만 찍었다."
+                 " 전체 %d행은 `--out 파일.md` 로 받는다.**" % (top, len(rows)))
+        text += LFC + "판정은 파일에서 하고, 대화에는 개수와 결론만 남긴다."
     if out:
         open(out, "w", encoding="utf-8").write(text)
         print("저장: %s (행 %d개)" % (out, len(rows)))

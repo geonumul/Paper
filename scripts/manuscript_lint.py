@@ -4,6 +4,7 @@
 쓰임:
   python manuscript_lint.py 원고.md
   python manuscript_lint.py 원고.md --abstract-max 250 --hl-max 85 --kw-max 7
+  python manuscript_lint.py 원고.md --hl-n 3-5      # 하이라이트 개수 규정
 
 검사
   ① 규격        초록 낱말 수 / 하이라이트 개수·글자 수 / 키워드 개수

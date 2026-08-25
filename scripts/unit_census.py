@@ -167,6 +167,16 @@ def main():
         L.append("")
         L.append("`--paras` 또는 `--sents`로 대장을 만든다.")
 
+    if not out:
+        # 대화창에 수백 행을 찍지 않는다. 전체는 --out 으로 파일에 쓴다
+        top = int(opt("--top", 30))
+        idx = [i for i, l in enumerate(L)
+               if l.startswith("| ") and "번호" not in l]
+        if len(idx) > top:
+            L = L[:idx[top]] + ["",
+                 "**화면에는 %d행만 찍었다. 전체 %d행은 `--out 파일.md` 로"
+                 " 받는다.**" % (top, len(idx)),
+                 "판정은 파일에서 하고, 대화에는 개수와 결론만 남긴다."]
     text = "\n".join(L)
     if out:
         open(out, "w", encoding="utf-8").write(text)

@@ -5,6 +5,10 @@
   python cite_sources.py --txt literature/_txt --journal TFSC
   python cite_sources.py --txt literature/_txt --journal TFSC --top 30
   python cite_sources.py --txt literature/_txt --journal TFSC --out outputs/인용출처.md
+  python cite_sources.py --txt literature/_txt --self "저널 이름"   # 자기 저널 인용 비율
+  python cite_sources.py --txt literature/_txt --journal TFSC --ours 원고.md
+      우리 참고문헌의 저널 분포를 게재작 분포와 나란히 놓고,
+      **모자란 저널(더 받아 올 것)** 과 **과한 저널**을 낸다.
 
 무엇을 보나
   목표 저널에 실린 논문들의 참고문헌에서 **저널 이름**을 뽑아 분포를 낸다.
@@ -26,7 +30,7 @@ from collections import Counter, defaultdict
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-REF_HEAD = re.compile(r"^\s*(References|REFERENCES|Bibliography|참고문헌)\s*$",
+REF_HEAD = re.compile(r"^\s*#{0,4}\s*\**(References|REFERENCES|Bibliography|참고문헌)\**\s*$",
                       re.M)
 # "... . Journal Name, 45(2), 123-145." 또는 "... . Journal Name 45, 123."
 JOURNAL = re.compile(
@@ -73,6 +77,75 @@ def refs_of(text):
     if not m:
         return ""
     return text[m[-1].end():]
+
+
+def journals_of(body):
+    """참고문헌 덩어리에서 저널 이름을 뽑아 센다."""
+    c = Counter()
+    for m in JOURNAL.finditer(body):
+        j = normalize(m.group(1))
+        if len(j) < 5 or STOP_WORDS.match(j) or len(j.split()) > 9:
+            continue
+        c[key_of(j)] += 1
+        LABEL[key_of(j)].add(j)
+    return c
+
+
+def compare_ours(path, total, n_ref_total, top):
+    """우리 참고문헌 분포를 게재작 분포와 나란히 놓는다."""
+    L = ["", "## 우리 원고와 나란히 보기"]
+    if not os.path.exists(path):
+        return L + ["", "- 원고를 못 찾았다: %s" % path]
+    raw = re.sub(r"-\s*\n\s*", "", open(path, encoding="utf-8",
+                                        errors="replace").read())
+    body = refs_of(raw)
+    if not body:
+        return L + ["", "- 원고에서 참고문헌 절을 못 찾았다."
+                        " 제목이 `References`인지 확인하라"]
+    # 원고가 markdown이면 저널 이름이 *기울임*으로 싸여 있다. 걷어낸다
+    body = body.replace("*", "").replace("_", " ")
+    mine = journals_of(body)
+    n_mine = sum(mine.values())
+    if n_mine < 5:
+        return L + ["", "- 원고 참고문헌에서 저널 이름을 %d개밖에 못 뽑았다."
+                        " 형식을 확인하라" % n_mine]
+    L.append("")
+    L.append("- 우리 참고문헌에서 뽑힌 항목 **%d개** (게재작 쪽은 %d개)"
+             % (n_mine, n_ref_total))
+    L.append("")
+    L.append("| 저널 | 게재작 | 우리 | 차이 | 판정 |")
+    L.append("|--|--|--|--|--|")
+    short = []
+    for k, n in total.most_common(top):
+        p_them = 100.0 * n / n_ref_total
+        p_us = 100.0 * mine.get(k, 0) / n_mine
+        gap = p_us - p_them
+        if mine.get(k, 0) == 0 and p_them >= 1.0:
+            v = "**한 편도 없음**"
+            short.append((max(LABEL[k], key=len) if LABEL[k] else k, p_them))
+        elif gap < -0.5 * p_them and p_them >= 1.0:
+            v = "**모자람**"
+            short.append((max(LABEL[k], key=len) if LABEL[k] else k, p_them))
+        elif gap > max(5.0, p_them):
+            v = "과함"
+        else:
+            v = "비슷"
+        L.append("| %s | %.1f%% | %.1f%% | %+.1f%%p | %s |"
+                 % (max(LABEL[k], key=len) if LABEL[k] else k,
+                    p_them, p_us, gap, v))
+    L.append("")
+    if short:
+        L.append("**더 받아 올 저널 %d곳** (게재작은 읽는데 우리는 거의 안"
+                 " 읽은 것):" % len(short))
+        for nm, p in short:
+            L.append("- %s (게재작 인용의 %.1f%%)" % (nm, p))
+        L.append("")
+    L.append("**주의: 비율을 맞추려고 인용하지 않는다.** 이 표는 *받아 올*"
+             " 목록을 정하는 데 쓴다. 받아 온 뒤에는 한 편씩 읽고,")
+    L.append("우리 문장이 하는 말을 그 논문이 실제로 하는지 확인한 것만"
+             " 인용한다(`17_인용검증.md`). 맥락이 안 맞으면 인용하지 않고,")
+    L.append("그 자리는 비율이 모자란 채로 둔다.")
+    return L
 
 
 def main():
@@ -148,6 +221,10 @@ def main():
         L.append("**가장 많이 인용된 저널**: %s (%.1f%%). 이것이 목표 저널이면"
                  " 곧 자기 저널 인용 비율이다. 다른 저널을 기준으로 세려면"
                  " `--self \"저널 이름\"`" % (label, 100.0 * n / n_ref_total))
+
+    ours = opt("--ours")
+    if ours:
+        L.extend(compare_ours(ours, total, n_ref_total, top))
 
     L.append("")
     L.append("## 어떻게 쓰나")

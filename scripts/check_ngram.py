@@ -7,11 +7,15 @@
 
   python check_ngram.py --calibrate [--txt ...] [--journal 5_journal]
       목표 저널 게재작의 문장 리듬 대역을 실측해 저장한다.
+      --stability 를 붙이면 편수별로 대역이 얼마나 흔들리는지
+      함께 낸다(몇 편이면 충분한지 판단용).
       --journal 은 캐시 파일 이름에 들어 있는 표식(폴더명·저널명 조각).
       생략하면 캐시 전체를 쓴다.
 
-  python check_ngram.py 원고.md
+  python check_ngram.py 원고.md [--band <파일>] [--allow <파일>]
       원고의 영문 5단어 연쇄가 문헌 원문에 그대로 있는지 대조하고,
+      --band 는 리듬 대역 파일(기본 _burstiness_band.json),
+      --allow 는 사람이 통과시킨 관용구 목록(기본 _ngram_allow.txt).
       문장 길이 변동계수를 실측 대역과 비교한다.
 
 - 5-gram이 걸리면: 귀속 인용(따옴표+출처)이거나 완전 재구성이거나 둘 중
@@ -83,6 +87,38 @@ def extract(lit, txt_dir):
           % (done, len(glob.glob(txt_dir + "/*.txt"))))
 
 
+def stability(rows):
+    """편수를 10편씩 늘려 가며 대역이 얼마나 변하는지 본다.
+
+    "몇 편이면 충분한가"를 숫자로 못 박지 않고 재서 정하기 위한 것이다.
+    대역 폭이 더 안 변하면 그만 받아도 된다.
+    """
+    print("")
+    print("## 대역 안정성 (몇 편이면 충분한가)")
+    print("")
+    print("| 편수 | CV 대역 | 폭 | 직전 대비 폭 변화 |")
+    print("|--|--|--|--|")
+    prev = None
+    steps = list(range(10, len(rows) + 1, 10))
+    if not steps or steps[-1] != len(rows):
+        steps.append(len(rows))
+    for k in steps:
+        if k < 5:
+            continue
+        sub = [r[2] for r in rows[:k]]
+        lo, hi = min(sub), max(sub)
+        w = hi - lo
+        ch = "-" if prev is None else "%+.0f%%" % (100.0 * (w - prev) / prev
+                                                   if prev else 0)
+        print("| %d편 | %.2f-%.2f | %.2f | %s |" % (k, lo, hi, w, ch))
+        prev = w
+    print("")
+    print("**마지막 칸의 변화가 5% 미만이면 그만 받아도 된다.** 계속 출렁이면"
+          " 표본이 아직 적다는 뜻이므로 더 받는다.")
+    print("표본을 늘리는 순서가 파일 이름 순이라 우연에 좌우된다."
+          " 경향만 읽는다.")
+
+
 def calibrate(txt_dir, mark, band_f):
     rows = []
     for f in sorted(glob.glob(txt_dir + "/*.txt")):
@@ -101,6 +137,8 @@ def calibrate(txt_dir, mark, band_f):
         return
     cvs = [r[2] for r in rows]
     means = [r[1] for r in rows]
+    if "--stability" in sys.argv:
+        stability(rows)
     band = {"cv_lo": min(cvs), "cv_hi": max(cvs),
             "cv_med": round(statistics.median(cvs), 2),
             "len_lo": min(means), "len_hi": max(means), "n_papers": len(rows)}
@@ -111,8 +149,10 @@ def calibrate(txt_dir, mark, band_f):
     print("\n대역: 문장 평균 %s-%s단어, CV %s-%s (중앙값 %s)  → %s"
           % (band["len_lo"], band["len_hi"], band["cv_lo"], band["cv_hi"],
              band["cv_med"], band_f))
-    if len(rows) < 20:
-        print("주의: 20편 미만이면 대역이 흔들립니다. 논문을 더 모으세요.")
+    if len(rows) < 40:
+        print("주의: %d편입니다. 40편 미만이면 한 편이 들고 날 때마다 대역이"
+              " 출렁입니다. 더 모으세요." % len(rows))
+        print("      얼마나 흔들리는지는 --stability 로 봅니다.")
 
 
 def scan(path, txt_dir, band_f, allow_f):

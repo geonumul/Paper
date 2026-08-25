@@ -4,6 +4,7 @@
 쓰임:
   python align_check.py 원고_영문.md 원고_국문.md
   python align_check.py 영문.md 국문.md --out outputs/번역대조.md
+  python align_check.py 영문.md 국문.md --with-refs   # 참고문헌까지 포함해 대조
 
 무엇을 보나
   ① 단위 수     절·문단·문장 개수가 맞는가 (문단이 갈라지거나 합쳐졌는가)
