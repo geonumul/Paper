@@ -1,88 +1,141 @@
 # -*- coding: utf-8 -*-
 
+
 """낱말 대장의 한 구간을 판정한다. 갈래로 갈리는 것은 갈래로, 나머지는 사람이.
+
 
 쓰임:
 
+
   python word_judge.py 대장.md 61 120 --md 원고.md --txt <코퍼스>
+
 
       그 구간을 갈래로 갈라 보여 준다 (대장은 안 건드린다)
 
+
   python word_judge.py 대장.md 61 120 --md 원고.md --txt <코퍼스> --apply
+
 
       갈래로 갈린 행에 판정과 근거를 적는다. **남은 것은 안 적는다**
 
+  python word_judge.py 대장.md 1 1769 --md 원고.md --txt <코퍼스> --apply --refresh
+
+      **도구를 고친 뒤, 근거가 부실한 행만 다시 적는다.** 인용이 없거나,
+
+      적힌 인용이 그 논문에 되짚어지지 않는 행이다. ★가 붙은 행과,
+
+      코퍼스에 문장이 있을 수 없는 갈래(참고문헌에만 나오는 말, 고유명,
+
+      조사표 항목)는 건드리지 않는다
+
+
   python word_judge.py 대장.md 1 1200 --md 원고.md --txt <코퍼스> --diff
+
 
       **도구가 바뀐 뒤** 새 판이 다르게 말하는 행만 뽑는다. 층을 처음부터
 
+
       다시 판정하지 않고 갈라지는 행만 본다
+
 
   python word_judge.py 대장.md 61 120 --md 원고.md --txt <코퍼스> --verify
 
+
       **이미 적힌 근거가 사실인지 되짚는다.** 근거가 댄 논문에 그 낱말이
+
 
       실제로 있는지, 인용한 문장이 그 논문에 있는지 확인한다
 
+
 왜 필요한가
+
 
   낱말이 1,500개면 한 턴 60행으로도 스물다섯 턴이다. 행마다 손으로 근거를
 
+
   쓰면 스물다섯 턴이 타자로 지나가거나, 더 흔하게는 **한 줄짜리 이유를
+
 
   전부에 붙여 넣는 것으로 무너진다.** 둘 다 판정이 아니다.
 
+
   그래서 **근거로 갈리는 것은 근거로 가르고**, 안 갈리는 것만 남긴다.
+
 
   자동화의 목적은 대신 답하는 것이 아니라, 사람이 실제로 읽을 만큼
 
+
   남는 것을 줄이는 데 있다.
+
 
 갈래
 
+
   대상 아님   수식·코드 안에만 있다 (LaTeX 명령이 낱말로 올라온 것)
+
 
   유지        참고문헌에만 있다 (인용한 논문의 저자명·제목 조각)
 
+
   유지        그림·표 캡션에만 있다 (우리 그림을 설명하는 말)
+
 
   유지        게재작 8% 이상이 쓴다 (**어느 논문 어느 문장인지 함께 적는다**)
 
+
   유지        그 꼴만 없고 어간이 게재작에 흔하다
+
 
   ★ 다른 꼴   우리 꼴은 게재작에 **아예 없고** 낱말이 통째로 다른 꼴로 굳어
 
+
               있다 (overfit / overfitting). **단수·복수·시제·부사형은
+
 
               알리지 않는다.** 그건 문장 자리가 정하는 문법이다
 
+
   유지        조사표 항목 코드(Q14) 옆이거나 표 안에만 있다 (원자료 표기)
+
 
   손으로 볼 것 위 어디에도 안 걸리는 것
 
+
 **★ 다른 꼴은 지적이 아니라 후보다.** 바꿀지는 저자가 정한다.
+
 
 """
 
+
 import io
+
 
 import os
 
+
 import re
+
 
 import sys
 
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 
 from _norm import mask_currency, norm_text   # noqa: E402
 
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
 
 MATH = re.compile(r"\$\$[^$]{0,800}\$\$|\$[^$]{0,300}\$", re.S)
 
+
 CAPTION = re.compile(r"(?m)^\**(?:Table|Fig(?:\.|ure)?|Note|Source)\b[^\n]*")
 
+
 REFHEAD = re.compile(r"(?im)^#{0,4}\s*\**(references|bibliography|참고문헌)\**\s*$")
+
 
 def opt(name, default=None):
 
@@ -96,11 +149,13 @@ def opt(name, default=None):
 
     return default
 
+
 def has(text, w):
 
     return re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])",
 
                      text, re.I) is not None
+
 
 def stem_of(w):
 
@@ -114,24 +169,36 @@ def stem_of(w):
 
     return w
 
+
 _HIT_CACHE = {}
 
+
 def papers_with(docs, pat, exact_case=False):
+
     """그 표현이 나오는 게재작 이름들.
 
+
     **값싼 걸러내기를 붙이려다 사고를 냈다.** 정규식 문자열에서 글자만
+
     뽑아 열쇠로 썼더니 `(?<![A-Za-z])institute`가 `azazin`이 되어 아무
+
     문서도 안 걸렸고, **답이 늘 0**이 되었다. 걸러내기를 빼고 그대로
+
     훑는다. 느린 것은 캐시로 감당한다.
+
     """
 
     """그 표현이 나오는 게재작 이름들.
 
+
     exact_case=True면 **소문자 그대로만** 찾는다. 고유명을 굴절형으로
+
 
     오인하는 것을 막는다. `bullet`이 저널 이름 *Bulletin*으로, `rose`가
 
+
     저자 성 *Rosen*으로 잡힌 적이 있다.
+
 
     """
 
@@ -161,20 +228,144 @@ def papers_with(docs, pat, exact_case=False):
 
     return out
 
+
 def content_words(s):
 
     return {w.lower() for w in re.findall(r"[A-Za-z]{4,}", s or "")}
 
+
 # 되짚을 수 없는 문장은 근거로 쓰지 않는다. 물음표·따옴표·대시가 든
+
+
 # 문장은 대조가 막힌다(오늘만 일곱 번). 그런 부호는 대개 참고문헌
+
+
 # 제목에 있으므로, 거르면 제목도 함께 걸러진다
+
+
 BAD_MARKS = '?"‘’“”–—*|'
 
+
 _SENT_CACHE = {}
+
+
+# **편수만 적힌 근거는 근거가 아니다.** "게재작 34편이 쓴다"는 그렇게
+
+
+# 적힌 글자를 서른네 편이 담고 있다는 말일 뿐, 그 낱말이 우리와 같은 일을
+
+
+# 한다는 말이 아니다. 편수는 맞는데 뜻이 다른 낱말이 오늘만 네 번 있었다.
+
+
+# 그러니 문장을 못 찾았으면 **못 찾았다고 적는다.** 그래야 되짚기가 센다
+
+
+NOQUOTE = ("  **인용할 문장을 못 찾았다. 편수만으로는 뜻이 같은지"
+
+           " 알 수 없다. 사람이 확인할 것**")
+
+
+CLEAN_RUN = re.compile(r"[A-Za-z][A-Za-z0-9 ,]+")
+
+
+_FLAT_CACHE = {}
+
+
+def flat_text(x):
+    """대조용으로 다듬은 글. **적는 쪽과 되짚는 쪽이 같은 것을 쓴다.**
+
+    굽은 아포스트로피, 별표, 세로줄 때문에 근거가 맞는데도 "그 논문에
+    없다"로 걸린 적이 세 번 있다. 둘이 서로 다른 다듬기를 쓰면 또 갈린다.
+    """
+    x = norm_text(x, fold_accents=True)
+    x = re.sub(r"[*|`_~]", "", x)
+    return re.sub(r"\s+", " ", x).strip()
+
+
+def _flat_doc(name, t):
+    if name not in _FLAT_CACHE:
+        _FLAT_CACHE[name] = flat_text(t)
+    return _FLAT_CACHE[name]
+
+
+def round_trips(name, t, cand):
+    """되짚기와 **똑같은 방식으로** 그 문장이 그 논문에 있는지 본다.
+
+    오늘 열한 번, 도구가 적은 인용을 되짚기가 "그 논문에 없다"로 걸렀고
+    그때마다 사람이 손으로 고쳤다. 적는 쪽과 되짚는 쪽이 같은 글을 서로
+    다르게 다듬었기 때문이다. **적기 전에 맞춰 보면 그 일이 없어진다.**
+    """
+    q = re.sub(r"^[^A-Za-z]+", "", flat_text(cand))[:40]
+    return bool(q) and _flat_doc(name, t).find(q) >= 0
+
+
+def _clean_quote(win, rx):
+
+    """창에서 **되짚을 수 있는 토막** 하나를 고른다. 없으면 None.
+
+
+    인용은 글자·숫자·쉼표·빈칸만으로 이루어진 구간에서만 고른다. PDF에서
+
+    뽑은 글에는 수식 부스러기(`PrYi 14 1 14 ^pi`)와 하이픈·괄호가 섞여
+
+    있는데, 그런 토막을 근거로 적으면 되짚기가 "그 논문에 없다"로 막힌다.
+
+    **부호를 지워 맞추는 대신 부호가 없는 구간만 쓴다.**
+
+    """
+
+    win = norm_text(win, fold_accents=True)
+
+    win = "".join(c if ord(c) < 128 else " " for c in win)
+
+    best = None
+
+    for m in CLEAN_RUN.finditer(win):
+
+        run = m.group(0)
+
+        if m.start() == 0:
+
+            # 창이 낱말 한가운데서 시작했을 수 있다(grating <- integrating).
+
+            # 토막이 창 첫머리면 앞 낱말을 버린다. 첫머리가 아니면 앞이
+
+            # 부호이므로 이미 낱말 경계다
+
+            sp = run.find(" ")
+
+            run = run[sp + 1:] if sp > 0 else ""
+
+        run = re.sub(r"\s+", " ", run).strip(" ,")
+
+        if len(run) < 45 or not rx.search(run):
+
+            continue
+
+        toks = run.split()
+
+        # 수식·표에서 뽑힌 부스러기는 숫자 토막이 몰려 있다
+
+        if sum(1 for t in toks if t.strip(",").isdigit()) > len(toks) * 0.25:
+
+            continue
+
+        if re.search(r"Manual for|www\.|doi|pp\.|ISBN|Proceedings", run, re.I):
+
+            continue
+
+        if best is None or len(run) > len(best):
+
+            best = run
+
+    return best[:110] if best else None
+
 
 def _candidates(docs, pat):
 
     """그 표현이 나온 문장 후보들. **패턴마다 한 번만 훑는다.**
+
 
     이 훑기가 가장 비싸다. 51편이면 한 번에 2MB가 넘는데, 행마다 다시
 
@@ -186,52 +377,22 @@ def _candidates(docs, pat):
 
         return _SENT_CACHE[pat]
 
-    rx = re.compile(r"[^.]{0,60}" + pat + r"[^.]{0,60}", re.I)
+    rx = re.compile(r"[^.]{0,90}" + pat + r"[^.]{0,90}", re.I)
+
+    inner = re.compile(pat, re.I)
 
     out = []
 
     for n, t, tl in docs:
 
-        for m in list(rx.finditer(t))[:4]:
+        for m in list(rx.finditer(t))[:6]:
 
-            cand = re.sub(r"\s+", " ", m.group(0)).strip()
+            cand = _clean_quote(m.group(0), inner)
 
-            # **되짚을 수 있는 문장만 근거로 쓴다.** 물음표·따옴표·대시가
+            # **적기 전에 되짚어 본다.** 안 맞는 문장은 근거가 아니라 일거리다
+            if cand and round_trips(n, t, cand):
 
-            # 든 문장은 대조가 막힌다(오늘만 일곱 번 막혔다). 그런 부호는
-
-            # 대개 참고문헌 제목에 있으므로, 거르면 제목도 함께 걸러진다
-
-            # **버리지 않고 다듬는다.** 부호가 든 문장을 다 버리면 근거가
-            # 아예 없는 행이 생긴다(PDF 글에는 합자·발음기호가 흔하다).
-            # 되짚기도 같은 방식으로 다듬어 맞추므로 대조가 막히지 않는다
-            cand = norm_text(cand, fold_accents=True)
-            for ch in BAD_MARKS:
-                cand = cand.replace(ch, " ")
-            cand = "".join(c for c in cand if ord(c) < 128)
-            cand = re.sub(r"\s+", " ", cand).strip()
-
-            # 앞 낱말이 잘린 조각으로 시작하지 않게 한다 (grating <- integrating)
-
-            sp = cand.find(" ")
-
-            if 0 < sp < 12:
-
-                cand = cand[sp + 1:]
-
-            cand = cand[:110]
-
-            if len(cand) < 45:
-
-                continue
-
-            if re.search(r"Manual for|www\.|doi|pp\.|ISBN|Proceedings",
-
-                         cand, re.I):
-
-                continue
-
-            out.append((n, cand))
+                out.append((n, cand))
 
         if len(out) >= 40:
 
@@ -241,15 +402,20 @@ def _candidates(docs, pat):
 
     return out
 
+
 def sentence_in(docs, pat, like=None, w_low=""):
 
     """그 표현이 쓰인 게재작 문장 하나. **우리 문장과 가까운 것을 고른다.**
 
+
     첫 문장을 그냥 집으면 다른 뜻의 문장이 근거로 붙는다. 실제로
+
 
     `contributions`의 근거로 "연구의 학술적 기여"를 말하는 문장이 붙었는데
 
+
     우리 쓰임은 변수가 예측에 기여한 양이었다.
+
 
     """
 
@@ -283,15 +449,20 @@ def sentence_in(docs, pat, like=None, w_low=""):
 
     return best[1], best[2] + mark
 
+
 def corpus_prose(t):
 
     """게재작에서 참고문헌을 잘라 낸다.
 
+
     안 자르면 서지의 **저널 이름과 저자명**이 본문 어휘로 잡힌다. `bullet`이
+
 
     Psychological *Bulletin* 때문에 "게재작은 다른 꼴을 쓴다"로 판정된 적이
 
+
     있다. 여덟 편이 그 저널을 인용했을 뿐이었다.
+
 
     """
 
@@ -303,15 +474,20 @@ def corpus_prose(t):
 
     return t[:cands[0]] if cands else t
 
+
 def load_docs(txt_dir):
 
     """게재작을 읽는다. 참고문헌은 잘라 내고, 소문자본을 함께 들고 다닌다.
 
+
     소문자본은 **정규식으로 훑기 전에 값싼 문자열 검사로 거르기 위한 것**
+
 
     이다. 안 그러면 대장 한 행마다 51편 전체를 훑어, 1,700행에서 몇 GB를
 
+
     훑게 되고 검사가 몇 분씩 걸린다.
+
 
     """
 
@@ -331,15 +507,20 @@ def load_docs(txt_dir):
 
     return out
 
+
 def split_manuscript(md):
 
     """본문 산문 / 표 / 캡션 / 수식 / 참고문헌으로 가른다.
 
+
     **통화의 달러를 먼저 가린다.** `US$ 4 million`의 달러가 다음 달러와
+
 
     짝지으면 그 사이 본문이 통째로 수식이 된다. 실제로 7,876자가 삼켜져
 
+
     그 구간 낱말이 전부 "LaTeX 명령"으로 판정된 적이 있다.
+
 
     """
 
@@ -363,13 +544,17 @@ def split_manuscript(md):
 
     return prose, tables, caps, math, refs
 
+
 def rows_of(path):
 
     """대장 행: 번호, 낱말, 원고 빈도, 코퍼스 편수, 1차 판정.
 
+
     1차 판정 칸에 대조표가 잰 어간 측정이 들어 있다. 여기서 다시 재지 않고
 
+
     그대로 쓴다. 같은 것을 두 번 재면 두 값이 갈린다.
+
 
     """
 
@@ -394,6 +579,7 @@ def rows_of(path):
             continue
 
     return rows
+
 
 def judge(w, cnt, n_docs, docs, parts, note=''):
 
@@ -471,7 +657,7 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
 
         return ("유지", "게재작 %d편(%.0f%%)이 쓴다. [%s] %s" % (cnt, pct, p, s)
 
-                if p else "게재작 %d편(%.0f%%)이 쓴다" % (cnt, pct))
+                if p else ("게재작 %d편(%.0f%%)이 쓴다." % (cnt, pct)) + NOQUOTE)
 
     if "형태만 없음" in note:
 
@@ -497,9 +683,9 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
 
                                r"[a-z]{0,5}(?![A-Za-z])")
 
-            return ("유지", "그 꼴만 없고 어간 '%s'가 게재작 %d편에 있다. [%s] %s"
+            return ("유지", "그 꼴만 없고 어간 '%s'가 게재작 %d편에 있다.%s"
 
-                    % (st, len(sp), p, s))
+                    % (st, len(sp), (" [%s] %s" % (p, s)) if p else NOQUOTE))
 
     # 낱말을 앞머리로 하는 **굴절형**을 게재작이 쓰는가
 
@@ -551,27 +737,34 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
 
         return ("★ 다른 꼴", "이 꼴은 게재작 %d편, **같은 말의 다른 꼴은"
 
-                          " %d편.** [%s] %s → 문장 자리가 그 꼴을 요구하는지"
+                          " %d편.**%s → 문장 자리가 그 꼴을 요구하는지"
 
                           " 먼저 보고, 아니면 저자가 정한다"
 
-                % (cnt, len(longer), p, s))
+                % (cnt, len(longer), (" [%s] %s" % (p, s)) if p else NOQUOTE))
 
     return None
+
 
 def in_body_independent(md_raw, w):
 
     """그 낱말이 본문에 있는가를 **판정과 다른 방법으로** 다시 본다.
 
+
     되짚기가 판정과 같은 계산을 쓰면 같은 버그에 같이 눈이 먼다. 실제로
+
 
     달러 짝짓기 버그 하나가 판정과 자가검사를 동시에 통과시킨 적이 있다.
 
+
     그래서 여기서는 달러를 아예 안 본다. 낱말이 나온 **줄의 생김새**로
+
 
     가른다. 보통 낱말이 다섯 개 이상이고 LaTeX 명령이 없고 표 줄이
 
+
     아니면 산문이다.
+
 
     """
 
@@ -603,27 +796,35 @@ def in_body_independent(md_raw, w):
 
     return False
 
+
 def verify(led, a, b, docs, parts, md_raw):
 
     """이미 적힌 근거가 사실인지 되짚는다. **판정과 다른 경로로 계산한다.**
 
+
     네 가지를 본다.
+
 
       1 근거가 이름 댄 논문이 코퍼스에 있는가 (줄여 적었으면 알려 준다)
 
+
       2 인용한 문장이 그 논문에 실제로 있는가 (따옴표·굽은 부호는 맞춰 본다)
+
 
       3 "참고문헌에만" "수식 안"이라 적힌 낱말이 정말 본문에 없는가
 
+
       4 판정 칸이 비어 있지 않은가
 
+
     **한 줄이라도 안 맞으면 그 배치의 판정을 다시 본다.**
+
 
     """
 
     byname = {d[0]: d[1] for d in docs}
 
-    bad, checked, short_key = [], 0, 0
+    bad, checked, short_key, mute = [], 0, 0, []
 
     rows_seen = []
 
@@ -652,6 +853,11 @@ def verify(led, a, b, docs, parts, md_raw):
         w, ev = cells[1], cells[-1]
 
         checked += 1
+        # 인용이 없는 근거는 되짚을 것이 없어 그냥 통과한다. 세어서 낸다
+        if "[" not in ev and not re.search(
+                r"참고문헌에만|수식|LaTeX|캡션에만|조사표|표 안에만"
+                r"|어간|조각|대상 아님|고유명|저자 성", ev):
+            mute.append((n, w, int(cells[2]) if cells[2].isdigit() else 0))
 
         rows_seen.append((n, w, int(cells[2]) if cells[2].isdigit() else 0))
 
@@ -689,13 +895,7 @@ def verify(led, a, b, docs, parts, md_raw):
 
             # 없다"로 걸린 적이 세 번 있다
 
-            def flat(x):
-
-                x = norm_text(x, fold_accents=True)
-
-                x = re.sub(r"[*|`_~]", "", x)
-
-                return re.sub(r"\s+", " ", x).strip()
+            flat = flat_text
 
             q = re.sub(r"^[^A-Za-z]+", "", flat(quote))[:40]
 
@@ -703,7 +903,11 @@ def verify(led, a, b, docs, parts, md_raw):
 
                 bad.append((n, w, "인용한 문장이 그 논문에 없다: %s…" % q))
 
-        if ("참고문헌에만" in ev or "수식 안" in ev) and                 in_body_independent(md_raw, w):
+        # 본문 편수를 함께 적은 근거는 **견주는 말**이지 참고문헌
+        # 전용을 주장하는 것이 아니다. 그것까지 잡으면 없는 잘못을 만든다
+        refs_only = (("참고문헌에만" in ev or "수식 안" in ev)
+                     and not re.search(r"본문에는", ev))
+        if refs_only and in_body_independent(md_raw, w):
 
             bad.append((n, w, "본문에 있는데 '%s'이라고 적혔다"
 
@@ -714,6 +918,13 @@ def verify(led, a, b, docs, parts, md_raw):
     print("")
 
     print("- 근거가 적힌 행 **%d개** 중 어긋난 것 **%d개**" % (checked, len(bad)))
+    if mute:
+        mute.sort(key=lambda r: -r[2])
+        print("- **인용 없이 편수만 적힌 행 %d개.** 되짚을 것이 없어"
+              " 그냥 통과한다. 그 낱말이 우리와 같은 일을 하는지"
+              " 알 수 없다. `--refresh`로 다시 적는다" % len(mute))
+        for n, w, freq in mute[:8]:
+            print("    - #%d %s (원고 %d회)" % (n, w, freq))
 
     for n, w, why in bad[:25]:
 
@@ -779,19 +990,26 @@ def verify(led, a, b, docs, parts, md_raw):
 
           " 그 위에 선 문단이 전부 어긋난다")
 
+
 def diff(led, a, b, docs, parts):
 
     """도구가 바뀐 뒤, **새 판이 다르게 말하는 행만** 뽑는다.
 
+
     도구를 고칠 때마다 층을 처음부터 다시 판정하면 끝나지 않는다. 그렇다고
+
 
     그냥 두면 옛 판이 잘못 적은 것이 남는다. 그래서 **이미 적힌 판정과 새
 
+
     판정을 견줘 갈라지는 행만** 낸다. 그 행만 다시 보면 된다.
+
 
     사람이 손으로 고친 행은 새 판이 뭐라 하든 건드리지 않는다. 다만 갈라진
 
+
     사실은 알려 준다.
+
 
     """
 
@@ -874,6 +1092,7 @@ def diff(led, a, b, docs, parts):
     print("**이 행만 다시 본다.** 손으로 고친 행이면 그대로 두고, 옛 판이"
 
           " 잘못 적은 것이면 새 판으로 바꾼다.")
+
 
 def main():
 
@@ -1003,13 +1222,40 @@ def main():
 
         return
 
-    out, n_w = [], 0
+    # `--refresh`면 **근거가 부실한 행을 다시 적는다.** 인용이 없거나,
+    # 적힌 인용이 그 논문에 되짚어지지 않는 행이다. ★가 붙은 행은
+    # 사람이 판정한 자리이므로 건드리지 않는다
+    refresh = "--refresh" in sys.argv
+    byname = {d[0]: d[1] for d in docs}
+
+    def weak(verd, ev):
+        # 코퍼스에 문장이 있을 수 없는 갈래는 부실한 것이 아니다.
+        # 참고문헌에만 나오는 말, 고유명, 조사표 항목, 수식 안의 기호가
+        # 그렇다. **사람이 손으로 적어 둔 판정도 여기 든다**
+        if re.search(r"참고문헌에만|본문에는|수식|LaTeX|캡션에만|조사표"
+                     r"|표 안에만|어간|조각|대상 아님|고유명|저자 성", ev):
+            return False
+        if "★" in verd:
+            return False
+        m2 = re.search(r"\[([^\]]+)\]([^\[]*)", ev)
+        if not m2:
+            return True
+        t2 = byname.get(m2.group(1))
+        return t2 is None or not round_trips(m2.group(1), t2, m2.group(2))
+
+    out, n_w, kept = [], 0, 0
 
     for ln in io.open(led, encoding="utf-8"):
 
-        m = re.match(r"\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|(.*)\|\s*\|\s*\|\s*$",
-
-                     ln.rstrip("\n"))
+        pat_row = (r"\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|(.*)"
+                   r"\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*$"
+                   if refresh else
+                   r"\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|(.*)\|\s*\|\s*\|\s*$")
+        m = re.match(pat_row, ln.rstrip(chr(10)))
+        if m and refresh and not weak(m.group(4), m.group(5)):
+            kept += 1 if a <= int(m.group(1)) <= b else 0
+            out.append(ln)
+            continue
 
         if m and int(m.group(1)) in got:
 
@@ -1030,8 +1276,11 @@ def main():
     print("")
 
     print("대장에 %d행을 적었다. 남은 %d행은 사람이 판정한다." % (n_w, len(left)))
+    if refresh:
+        print("- `--refresh`: 근거가 튼튼한 행 %d개는 그대로 두었다."
+              " ★가 붙은 행도 건드리지 않는다" % kept)
+
 
 if __name__ == "__main__":
 
     main()
-

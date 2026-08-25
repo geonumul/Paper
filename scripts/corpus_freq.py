@@ -32,9 +32,6 @@ def opt(name, default=None):
     return default
 
 
-
-
-
 def main():
     txt_dir = opt("--txt", DEF_TXT)
     mark = opt("--journal", "")

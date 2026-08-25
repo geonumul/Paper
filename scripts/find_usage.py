@@ -36,9 +36,6 @@ def opt(name, default=None):
     return default
 
 
-
-
-
 def split_sentences(text):
     """공백을 정규화하고 문장으로 자른다. 약어 뒤 마침표는 최대한 피한다."""
     t = re.sub(r"-\s*\n\s*", "", text)        # 줄바꿈 하이픈 복원
