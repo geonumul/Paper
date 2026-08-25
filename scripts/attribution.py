@@ -103,14 +103,21 @@ def flat(t):
 
 
 def load_sources(txt_dir):
-    """파일 이름에서 성과 연도를 뽑아 둔다."""
+    """파일 이름에서 성과 연도를 뽑아 둔다.
+
+    **이름이 `성+연도`로 시작하는 파일만 받는다.** 통계 자료처럼
+    `358517_2014` 꼴인 이름은 성이 없으므로 안 받는다. 받으면 그 `2014`가
+    연도로 읽혀 Dekker 2014의 원문으로 잡힌다. 실제로 그렇게 잡혀
+    "그 논문에 safety가 0회"라는 없는 잘못이 만들어졌다.
+    """
     out = []
     for p in sorted(glob.glob(os.path.join(txt_dir, "*.txt"))):
         name = os.path.splitext(os.path.basename(p))[0]
-        m = re.match(r"([A-Za-z'’-]+?)([A-Z][a-z]+)?(\d{4})", name)
+        # 성은 네 글자 이상이어야 한다. 한 글자짜리는 아무 이름에나 붙는다
+        m = re.match(r"^([A-Za-z'’-]{4,})(\d{4})(?!\d)", name)
         if not m:
             continue
-        out.append((name, m.group(1).lower(), m.group(3), p))
+        out.append((name, m.group(1).lower(), m.group(2), p))
     return out
 
 
@@ -124,17 +131,30 @@ def source_text(path):
     return _TXT[path]
 
 
+def _same_name(a, b):
+    """성이 같은가. **네 글자 이상이 맞아야 같다고 본다.**
+
+    앞글자 몇 개로 느슨하게 맞추면 한 글자짜리 조각이 아무 이름에나 붙는다.
+    `o`가 모든 O로 시작하는 성과 맞아 버린 적이 있다.
+    """
+    a, b = re.sub(r"[^a-z]", "", a), re.sub(r"[^a-z]", "", b)
+    if len(a) < 4 or len(b) < 4:
+        return False
+    n = min(len(a), len(b), 8)
+    return a[:n] == b[:n]
+
+
 def find_source(sources, surname, year):
-    """그 저자 그 해의 원문. 성이 파일 이름 앞머리와 맞아야 한다."""
-    s = re.sub(r"[^a-z]", "", surname.lower())
-    cand = [x for x in sources
-            if x[2] == year and (x[1].startswith(s[:6]) or s.startswith(x[1][:6]))]
+    """그 저자 그 해의 원문. **애매하면 안 고르고 없다고 한다.**"""
+    s = surname.lower()
+    cand = [x for x in sources if x[2] == year and _same_name(x[1], s)]
     if len(cand) == 1:
         return cand[0]
+    if len(cand) > 1:
+        return None          # 둘 이상이면 어느 것인지 모른다. 찍지 않는다
     # 연도가 한 해 어긋나는 판(온라인 우선 공개)까지 본다
     near = [x for x in sources
-            if abs(int(x[2]) - int(year)) <= 1
-            and (x[1].startswith(s[:6]) or s.startswith(x[1][:6]))]
+            if abs(int(x[2]) - int(year)) <= 1 and _same_name(x[1], s)]
     return near[0] if len(near) == 1 else None
 
 
@@ -195,7 +215,8 @@ def main():
           " 올린다" % (len(sources), least))
     print("")
 
-    checked = flagged = no_src = 0
+    checked = flagged = 0
+    no_src = []
     rows = []
     for s in sentences(body):
         m = CITE.search(s)
@@ -204,7 +225,11 @@ def main():
         surname, year = m.group(1), m.group(2)
         src = find_source(sources, surname, year)
         if not src:
-            no_src += 1
+            # **건너뛴 것은 안 한 것이다.** 몇 개인지만 세면 그 자리는
+            # 아무도 안 본 채로 남는다. 누구를 못 찾았는지 이름을 댄다
+            dup = [x[0] for x in sources
+                   if x[2] == year and _same_name(x[1], surname.lower())]
+            no_src.append((surname, year, dup))
             continue
         checked += 1
         t = source_text(src[3])
@@ -221,7 +246,16 @@ def main():
 
     print("- 저자를 주어로 삼은 문장 **%d개**를 원문과 맞췄다" % checked)
     if no_src:
-        print("- 원문을 못 찾은 인용 %d개는 건너뛰었다" % no_src)
+        print("- **원문을 못 찾아 건너뛴 인용 %d개.** 건너뛴 것은 안 본"
+              " 것이다" % len(no_src))
+        for who, yr, dup in no_src:
+            if dup:
+                print("    - %s (%s): 같은 해 원문이 **%d편**이라 어느 것인지"
+                      " 모른다 - %s. 한 논문이 두 이름으로 있으면 하나를"
+                      " 지운다" % (who, yr, len(dup), ", ".join(d[:34] for d in dup)))
+            else:
+                print("    - %s (%s): 그 이름 그 해의 원문이 없다. 파일 이름을"
+                      " `성+연도`로 맞추거나 원문을 넣는다" % (who, yr))
     print("")
     if not rows:
         print("**걸린 자리가 없다.** 저자 이름으로 연 문장의 이어 붙은 마디가"
