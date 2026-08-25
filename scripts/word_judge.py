@@ -80,13 +80,32 @@ def papers_with(docs, pat, exact_case=False):
     return [n for n, t in docs if rx.search(t)]
 
 
-def sentence_in(docs, pat):
-    rx = re.compile(r"[^.\n]{0,60}" + pat + r"[^.\n]{0,60}", re.I)
+def content_words(s):
+    return {w.lower() for w in re.findall(r"[A-Za-z]{4,}", s or "")}
+
+
+def sentence_in(docs, pat, like=None):
+    """그 표현이 쓰인 게재작 문장 하나. **우리 문장과 가까운 것을 고른다.**
+
+    첫 문장을 그냥 집으면 **다른 뜻의 문장**이 근거로 붙는다. 실제로
+    `contributions`의 근거로 "연구의 학술적 기여"를 말하는 문장이 붙었는데
+    우리 쓰임은 변수가 예측에 기여한 양이었다. 같은 낱말, 다른 뜻이다.
+
+    그래서 우리 문장과 **내용어가 겹치는** 문장을 고른다.
+    """
+    rx = re.compile(r"[^.]{0,60}" + pat + r"[^.]{0,60}", re.I)
+    want = content_words(like)
+    best = None
     for n, t in docs:
-        m = rx.search(t)
-        if m:
-            return n, re.sub(r"\s+", " ", m.group(0)).strip()[:110]
-    return None, None
+        for m in list(rx.finditer(t))[:4]:
+            cand = re.sub(r"\s+", " ", m.group(0)).strip()[:110]
+            score = len(want & content_words(cand)) if want else 0
+            if best is None or score > best[0]:
+                best = (score, n, cand)
+        if best and best[0] >= 3:
+            break
+    return (best[1], best[2]) if best else (None, None)
+
 
 
 def load_docs(txt_dir):
@@ -164,10 +183,14 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     if not has(prose, w) and has(tables, w):
         return ("유지", "본문이 아니라 표 안에만 있다. 표의 항목 이름이라"
                       " 원자료·조사표 표기를 따른다")
+    # 우리가 그 낱말을 쓴 문장. 근거를 고를 때 이것과 가까운 것을 고른다
+    om = re.search(r"[^.]{0,90}(?<![A-Za-z])" + re.escape(w) +
+                   r"(?![A-Za-z])[^.]{0,90}", prose, re.I)
+    ours_sent = om.group(0) if om else None
     pct = 100.0 * cnt / max(1, n_docs)
     if pct >= 8:
         p, s = sentence_in(docs, r"(?<![A-Za-z])" + re.escape(w) +
-                           r"(?![A-Za-z])")
+                           r"(?![A-Za-z])", ours_sent)
         return ("유지", "게재작 %d편(%.0f%%)이 쓴다. [%s] %s" % (cnt, pct, p, s)
                 if p else "게재작 %d편(%.0f%%)이 쓴다" % (cnt, pct))
     if "형태만 없음" in note:
