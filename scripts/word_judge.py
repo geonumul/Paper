@@ -25,7 +25,9 @@
   유지        그림·표 캡션에만 있다 (우리 그림을 설명하는 말)
   유지        게재작 8% 이상이 쓴다 (**어느 논문 어느 문장인지 함께 적는다**)
   유지        그 꼴만 없고 어간이 게재작에 흔하다
-  ★ 다른 꼴   게재작은 같은 말의 **다른 꼴**을 쓴다 (overfit / overfitting)
+  ★ 다른 꼴   우리 꼴은 게재작에 **아예 없고** 낱말이 통째로 다른 꼴로 굳어
+              있다 (overfit / overfitting). **단수·복수·시제·부사형은
+              알리지 않는다.** 그건 문장 자리가 정하는 문법이다
   유지        조사표 항목 코드(Q14) 옆이거나 표 안에만 있다 (원자료 표기)
   손으로 볼 것 위 어디에도 안 걸리는 것
 
@@ -182,9 +184,19 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     # 낱말을 앞머리로 하는 **굴절형**을 게재작이 쓰는가
     # (overfit -> overfitting). 아무 글자나 붙은 것을 같은 말로 보면
     # 안 된다. bullet에 in이 붙은 Bulletin은 다른 낱말이다
-    SUF = "(?:s|es|ed|d|ing|ly|ies|ment|ments|ation|ations|al)"
+    # **문법이 정하는 어미는 알리지 않는다.** 단수와 복수, 시제, 부사형은
+    # 문장 자리가 정하는 것이지 그 저널의 어휘 선택이 아니다.
+    #   was slight는 was slightly가 될 수 없고, 열거 안의 sanction은
+    #   sanctions가 될 수 없다. 이런 것을 알리면 문법을 문체 지적으로
+    #   바꿔 놓는다 (실제로 일곱 건이 그렇게 잘못 걸렸다)
+    # 알리는 것은 **낱말이 통째로 다른 꼴로 굳은 경우**뿐이다
+    #   (overfit / overfitting)
+    SUF = "(?:ing|ment|ments|ation|ations)"
+    # overfit + ing 은 overfitting 이다. 끝 자음이 겹치는 것을 봐 준다
+    DBL = "[bdgklmnprt]?"
     longer = papers_with(docs, r"(?<![A-Za-z])" + re.escape(w.lower())
-                         + SUF + r"(?![A-Za-z])", exact_case=True)
+                         + DBL + SUF + r"(?![A-Za-z])",
+                         exact_case=True)
     # 이 갈래는 "흔한가"가 아니라 "우리 꼴보다 그쪽이 더 자주 쓰이는가"를
     # 묻는다. 그래서 8% 문턱을 쓰지 않는다. 두 편 이상이고 우리 꼴보다
     # 많으면 저자에게 알린다 (판정이 아니라 후보다)
@@ -192,9 +204,10 @@ def judge(w, cnt, n_docs, docs, parts, note=''):
     # 정도로는 알리지 않는다. 그건 문체가 아니라 문법 선택이다
     if cnt == 0 and len(longer) >= 2:
         p, s = sentence_in(docs, r"(?<![A-Za-z])" + re.escape(w.lower())
-                           + SUF + r"(?![A-Za-z])")
-        return ("★ 다른 꼴", "이 꼴은 게재작 %d편, 그러나 **같은 말의 다른 꼴을"
-                          " %d편이 쓴다.** [%s] %s → 저자가 정한다"
+                           + DBL + SUF + r"(?![A-Za-z])")
+        return ("★ 다른 꼴", "이 꼴은 게재작 %d편, **같은 말의 다른 꼴은"
+                          " %d편.** [%s] %s → 문장 자리가 그 꼴을 요구하는지"
+                          " 먼저 보고, 아니면 저자가 정한다"
                 % (cnt, len(longer), p, s))
     return None
 
