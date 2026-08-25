@@ -514,6 +514,7 @@ python scripts/progress.py --skip 9 --why "국문판이 없어서"
 | `find_usage.py "패턴"` | 그 표현이 쓰인 문장을 앞뒤와 함께 |
 | `outline_map.py <게재작.txt>` | 게재작 목차와 절별 분량 |
 | `figure_forensics.py <pdf> <쪽>` | 그림·표의 폰트·색·선 두께 수치 |
+| `pdf_text.py <pdf폴더> <출력폴더>` | **PDF에서 글을 뽑는다. 두 단을 단 순서로 읽는다.** 줄 단위로 뽑으면 왼쪽 단과 오른쪽 단이 한 줄씩 섞여 어떤 문장도 안 이어진다. `--check <pdf폴더> <캐시폴더>`로 이미 만든 캐시를 원문과 맞춰 본다 |
 | `pdf_render.py <pdf> <시작> <끝>` | PDF 쪽을 PNG로 |
 | `ko_measure.py <국문원고>` | 국문 문장 길이·리듬·종결어미 |
 | `_norm.py` | 대조 전 정규화(합자·줄바꿈 붙임표·CRLF·따옴표)와 0건 경고. 다른 도구가 가져다 쓴다 |
