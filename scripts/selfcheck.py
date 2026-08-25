@@ -51,8 +51,11 @@ def main():
     print("")
     print("- 검사한 파일 %d개" % len(files))
 
-    ctrl, syntax, empty, junk = [], [], [], []
+    ctrl, syntax, empty, junk, eol = [], [], [], [], []
     for f in files:
+        # 줄 끝이 두 겹인가 (CR CR LF). 눈에 안 보이고 고치기를 망친다
+        if bytes([13, 13, 10]) in io.open(f, "rb").read():
+            eol.append(f)
         raw = io.open(f, encoding="utf-8", errors="replace").read()
         for i, ln in enumerate(raw.split(chr(10)), 1):
             if CTRL.search(ln):
@@ -87,13 +90,25 @@ def main():
         print("- 전부 통과")
 
     print("")
-    print("## 3. 빈 파일 / 깨진 글자")
+    print("## 3. 줄 끝 부호")
+    if eol:
+        print("- **%d개 파일에 줄 끝이 두 겹이다.** 다음에 읽으면 줄마다"
+              " 빈 줄이 끼어들고, 여러 줄짜리 고치기가 조용히 빗나간다"
+              % len(eol))
+        for f in eol[:8]:
+            print("    - %s" % os.path.basename(f))
+    else:
+        print("- 두 겹인 파일 없음")
+
+    print("")
+    print("## 4. 빈 파일 / 깨진 글자")
     print("- 빈 파일: %s" % (", ".join(os.path.basename(f) for f in empty)
                             or "없음"))
     print("- 깨진 글자: %s" % (", ".join(os.path.basename(f) for f in junk)
                              or "없음"))
 
-    bad = len(ctrl) + len(syntax) + len(empty) + len(junk)
+    bad = (len(ctrl) + len(syntax) + len(empty) + len(junk)
+           + len(eol))
     print("")
     print("---")
     if bad:
