@@ -284,10 +284,16 @@ def verify(led, a, b, docs, parts, md_raw):
                                 % name))
                     continue
             # 따옴표·굽은 부호·조사를 걷어내고 앞머리를 맞춰 본다
-            q = norm_text(quote)
-            q = re.sub(r"^[^A-Za-z]+", "", q)
-            q = re.sub(r"\s+", " ", q).strip()[:40]
-            if q and norm_text(re.sub(r"\s+", " ", t)).find(q) < 0:
+            # 인용을 대조할 때 **양쪽에서 같은 것을 걷어낸다.** 굽은
+            # 아포스트로피, 별표, 세로줄 때문에 근거가 맞는데도 "그 논문에
+            # 없다"로 걸린 적이 세 번 있다
+            def flat(x):
+                x = norm_text(x, fold_accents=True)
+                x = re.sub(r"[*|`_~]", "", x)
+                return re.sub(r"\s+", " ", x).strip()
+
+            q = re.sub(r"^[^A-Za-z]+", "", flat(quote))[:40]
+            if q and flat(t).find(q) < 0:
                 bad.append((n, w, "인용한 문장이 그 논문에 없다: %s…" % q))
         if ("참고문헌에만" in ev or "수식 안" in ev) and                 in_body_independent(md_raw, w):
             bad.append((n, w, "본문에 있는데 '%s'이라고 적혔다"
