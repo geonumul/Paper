@@ -75,7 +75,7 @@ JOSA = ["에서는", "으로써", "으로서", "이라는", "라는", "에서", 
 
 
 def ko_tokens(text):
-    text = re.sub(r"`[^`]*`", " ", text)
+    text = re.sub(r"`[^`]{0,80}`", " ", text)
     out = []
     for w in re.findall(r"[가-힣]{2,}", text):
         for j in JOSA:
@@ -88,8 +88,16 @@ def ko_tokens(text):
 
 
 def tokens(text):
+    """낱말을 뽑는다. **붙임표로 이어진 말은 통째로도, 조각으로도 센다.**
+
+    `long-term`을 한 덩어리로만 세면 `term`이 그 논문에 없는 것이 된다.
+    실제로 그 때문에 코퍼스 편수가 1,769행 중 809행(45.7%)에서 어긋났고,
+    `term`은 26편으로 나왔지만 실제로는 39편이었다. 사람이 눈으로 세는
+    방식(낱말 경계)과 도구가 세는 방식이 달랐던 것이다.
+    """
     text = re.sub(r"-\s*\n\s*", "", text)
-    text = re.sub(r"`[^`]*`", " ", text)              # 코드 조각 제거
+    text = re.sub(r"\$\$?[^$]{0,400}\$\$?", " ", text)   # 수식 제거
+    text = re.sub(r"`[^`]{0,80}`", " ", text)              # 코드 조각 제거
     text = re.sub(r"\((?:[^()]*\d{4}[^()]*)\)", " ", text)   # 인용 괄호 제거
     text = re.sub(r"[^A-Za-z\- ]+", " ", text)
     out = []
@@ -98,6 +106,10 @@ def tokens(text):
         if len(w) < 3:
             continue
         out.append(w)
+        if "-" in w:
+            for part in w.split("-"):
+                if len(part) >= 3:
+                    out.append(part)
     return out
 
 
@@ -197,6 +209,14 @@ def main():
             print("표·캡션·주석을 못 찾았다. markdown 표(| ... |) 형식인지 확인.")
             return
     else:
+        # 참고문헌은 본문이 아니다. 거기 실린 저자 성과 저널 이름까지 세면
+        # "게재작에 없는 낱말"이 서지 항목으로 가득 찬다(degrave, biometrics
+        # 같은 것). --with-refs 를 주면 포함한다
+        if "--with-refs" not in sys.argv:
+            cut = re.search(r"(?im)^#{0,4}\s*\**(references|bibliography|"
+                            r"참고문헌)\**\s*$", raw_all)
+            if cut:
+                raw_all = raw_all[:cut.start()]
         # 기록 블록과 헤더는 본문이 아니다
         body = "\n".join(ln for ln in raw_all.split("\n")
                          if not ln.lstrip().startswith((">", "#")))
@@ -269,6 +289,7 @@ def main():
                  " 코퍼스를 먼저 확인하고 다시 돌린다."
                  % (100.0 * zero / len(rows)))
     L.append("")
+    L.append("- 세는 규칙: 낱말 경계로 세고, 붙임표로 이어진 말은 조각으로도 센다(long-term은 term으로도)." " 참고문헌과 수식은 빼고 센다")
     L.append("**전수 판정이다.** 아래 %d행에 전부 판정을 적기 전에는 낱말 층을"
              " 닫지 않는다. 표본으로 몇 개만 보지 않는다." % len(rows))
     L.append("")
