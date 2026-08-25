@@ -252,6 +252,7 @@ def verify(led, a, b, docs, parts, md_raw):
     """
     byname = dict(docs)
     bad, checked, short_key = [], 0, 0
+    rows_seen = []
     lines = list(io.open(led, encoding="utf-8"))
     for line in lines:
         m0 = re.match(r"\|\s*(\d+)\s*\|", line)
@@ -265,6 +266,7 @@ def verify(led, a, b, docs, parts, md_raw):
             continue
         w, ev = cells[1], cells[-1]
         checked += 1
+        rows_seen.append((n, w))
         m = re.search(r"\[([^\]]+)\]([^\[]*)", ev)
         if m:
             name, quote = m.group(1), m.group(2)
@@ -299,6 +301,17 @@ def verify(led, a, b, docs, parts, md_raw):
         print("- 전부 확인됐다. 근거가 댄 논문에 그 낱말과 문장이 실제로 있다")
     if not checked:
         print("- 그 구간에 아직 근거가 적힌 행이 없다")
+        return
+    # **되짚기는 사실만 본다. 뜻이 같은지는 못 본다.**
+    # 논문 이름이 맞고 문장이 그 논문에 있어도, 그 문장이 우리 문장과 같은
+    # 뜻으로 그 낱말을 쓰는지는 사람이 읽어야 안다. 그래서 매 몫마다 몇 행을
+    # 지목해 눈으로 보게 한다
+    picks = [rows_seen[0], rows_seen[len(rows_seen) // 2], rows_seen[-1]]         if len(rows_seen) >= 3 else rows_seen
+    print("")
+    print("## 뜻은 기계가 못 본다. 아래 %d행은 눈으로 본다" % len(picks))
+    for n, w in picks:
+        print("    - #%d %s: 게재작 문장과 우리 문장이 **같은 뜻·같은 문법"
+              " 자리**로 그 낱말을 쓰는가" % (n, w))
 
 
 
