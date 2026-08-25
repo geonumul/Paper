@@ -2,7 +2,8 @@
 """검수 진행을 파일에 적어 두고, 한 턴에 한 단계만 하도록 막는다.
 
 쓰임:
-  python progress.py --init 원고.md --journal TFSC     # 처음 한 번
+  python progress.py --init 원고.md --journal TFSC --txt <코퍼스>  # 처음 한 번
+  python progress.py --corpus <코퍼스>                 # 코퍼스를 다시 뽑았을 때
   python progress.py --status                          # 지금 할 일 하나만 알려 준다
   python progress.py --check 7                         # 그 단계 관문을 통과했나
   python progress.py --done 7                          # 통과했으면 완료로 적는다
@@ -14,7 +15,7 @@
   **관문을 통과해야만 다음 단계로 넘어가게** 한다.
 
 관문이란
-  그 단계의 산출물이 실제로 있고, 대장이라면 **판정이 빈 행이 0**이어야
+  그 단계의 산출물이 실제로 있고, **코퍼스가 그때 그 코퍼스이고**, 대장이라면 **판정이 빈 행이 0**이어야
   통과다. 파일이 없거나 빈 행이 남아 있으면 `--done`이 거부한다.
 
 한 턴에 얼마나
@@ -26,6 +27,8 @@ import os
 import re
 import sys
 import json
+import glob
+import time
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
@@ -201,6 +204,17 @@ def gate(step, d, st):
     if not os.path.exists(path):
         return False, "산출물이 없다: %s" % path
     if kind == "ledger":
+        # **코퍼스가 바뀌었으면 그 위에서 잰 것은 옛 값이다.**
+        # 캐시를 다시 뽑는 일이 실제로 있었다. 두 단이 줄 단위로 섞여 있어
+        # 49편 중 21편을 다시 뽑았는데, 그 전에 372행을 그 캐시로 판정해
+        # 두었고 아무것도 알려 주지 않았다
+        want = st.get("corpus_stamp")
+        now = corpus_stamp(st.get("corpus"))
+        if want and now and want != now:
+            return False, ("**코퍼스가 바뀌었다.** 적어 둔 것은 `%s`인데 지금은"
+                           " `%s`다. 그 위에서 잰 편수와 근거는 옛 값이다."
+                           " 다시 재고 `--corpus <폴더>`로 다시 적는다"
+                           % (want, now))
         total, blank = ledger_rows(path)
         if total == 0:
             return False, "대장에 행이 없다: %s" % path
@@ -303,16 +317,34 @@ def status(d, st):
     print(bar(st, d))
 
 
+def corpus_stamp(path):
+    """코퍼스가 그때 그 코퍼스인가를 알아볼 표. 편수·바이트·가장 나중 시각."""
+    if not path or not os.path.isdir(path):
+        return ""
+    n = size = 0
+    newest = 0.0
+    for f in sorted(glob.glob(os.path.join(path, "*.txt"))):
+        n += 1
+        size += os.path.getsize(f)
+        newest = max(newest, os.path.getmtime(f))
+    return "%d편 %d바이트 %s" % (
+        n, size, time.strftime("%Y-%m-%d %H:%M", time.localtime(newest)))
+
+
 def main():
     d = opt("--dir", "outputs")
     if not os.path.isdir(d):
         os.makedirs(d, exist_ok=True)
 
     if "--init" in sys.argv:
+        txt = opt("--txt", "")
         st = {"manuscript": opt("--init"), "journal": opt("--journal", ""),
+              "corpus": txt, "corpus_stamp": corpus_stamp(txt),
               "steps": {}, "answers": {}, "notes": []}
         save(d, st)
         print("진행 상태를 만들었다: %s" % state_path(d))
+        if txt:
+            print("- 코퍼스: %s (%s)" % (txt, st["corpus_stamp"]))
         status(d, st)
         return
 
@@ -337,6 +369,17 @@ def main():
         save(d, st)
         print("%s단계를 건너뜀으로 적었다. **보고서에도 적는다.** (%s)"
               % (num, why))
+        return
+
+    if "--corpus" in sys.argv:
+        # 코퍼스를 다시 뽑았고, 그 위에서 잰 것을 **다시 잰 뒤** 이걸 부른다
+        txt = opt("--corpus")
+        st["corpus"] = txt
+        st["corpus_stamp"] = corpus_stamp(txt)
+        save(d, st)
+        print("코퍼스를 다시 적었다: %s (%s)" % (txt, st["corpus_stamp"]))
+        print("**그 위에서 잰 편수와 근거를 다시 재고 나서 부른 것이 맞는지"
+              " 확인한다.** 안 다시 쟀으면 지금 잰 값이 옛 코퍼스의 값이다")
         return
 
     if "--check" in sys.argv or "--done" in sys.argv:
