@@ -146,9 +146,9 @@ def ledger_terms(path):
     관문이 빈칸만 보면, 채워져 있기만 하면 무엇이 적혀 있든 통과한다.
     그래서 지어낸 갈래로 채운 층이 그대로 닫힐 뻔했다.
     """
-    bad_fn, bad_vd = [], []
+    bad_fn, bad_vd, swallowed = [], [], []
     if not os.path.exists(path):
-        return bad_fn, bad_vd
+        return bad_fn, bad_vd, swallowed
     in_body, header, col = False, None, None
     for ln in io.open(path, encoding="utf-8", errors="replace"):
         ln = ln.rstrip()
@@ -176,7 +176,16 @@ def ledger_terms(path):
             v = cells[vi].lstrip("★ ").strip()
             if not any(v.startswith(x) for x in VERDICT3):
                 bad_vd.append((cells[0], cells[vi]))
-    return bad_fn, bad_vd
+        # **걸린 것을 적어 놓고 유지로 닫은 행.** 다른 칸에 ★를 달아
+        # 두고 판정만 유지면, 그 지적은 아무 데도 안 남는다. 논란이
+        # 될 만한 것은 이 층에서 정하지 말고 `기록`으로 넘긴다
+        if vi is not None and vi < len(cells):
+            v = cells[vi]
+            rest = " ".join(c for n, c in enumerate(cells) if n != vi)
+            noted = ("★" in rest)
+            if noted and v.startswith("유지") and "기록" not in v:
+                swallowed.append((cells[0], v))
+    return bad_fn, bad_vd, swallowed
 
 
 def gate(step, d, st):
@@ -199,7 +208,7 @@ def gate(step, d, st):
             return False, ("판정 안 한 행 **%d개** 남았다 (전체 %d행). "
                            "**이 단계는 아직 안 끝났다**" % (blank, total))
         # 채워진 것만 보지 않고 **무엇으로 채웠는지**를 본다
-        bad_fn, bad_vd = ledger_terms(path)
+        bad_fn, bad_vd, swallowed = ledger_terms(path)
         if bad_fn:
             ex = ", ".join("%s(%s)" % (n, v) for n, v in bad_fn[:4])
             return False, ("기능이 `15` §4-1의 열 갈래 밖인 행 **%d개**: %s. "
@@ -210,6 +219,12 @@ def gate(step, d, st):
             return False, ("판정이 `15` §4-4의 넷(유지·대체·유보·기록)"
                            " 밖인 행 "
                            "**%d개**: %s" % (len(bad_vd), ex))
+        if swallowed:
+            ex = ", ".join(n for n, _ in swallowed[:5])
+            return False, ("걸린 것을 적어 두고 **유지로 닫은 행 %d개**: %s."
+                           " 논란이 될 만한 것은 이 층에서 정하지 말고"
+                           " 판정을 `기록`으로 적는다"
+                           % (len(swallowed), ex))
         return True, "%d행 전부 판정" % total
     return True, "산출물 있음: %s" % os.path.basename(path)
 
