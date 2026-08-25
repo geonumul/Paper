@@ -74,11 +74,36 @@ def key_of(j):
     return "|".join(w[:3] for w in words)
 
 
+# 참고문헌 항목처럼 보이는 연도. 두 꼴을 다 센다.
+#   Zhao, X. (2026). ...        괄호형
+#   Ilkay, M.S., Aslan, E., 2012. ...   괄호 없는 꼴 (Elsevier 계열에 흔하다)
+REF_YEAR = re.compile(r"\((?:19|20)[0-9][0-9][a-z]?\)"
+                      r"|,\s*(?:19|20)[0-9][0-9][a-z]?\.")
+
+
 def refs_of(text):
+    """참고문헌 덩어리를 돌려준다.
+
+    **줄 단위로만 찾으면 안 된다.** PDF에서 뽑은 글은 줄바꿈이 없거나
+    머리글이 줄 안에 묻혀 있다. 실제로 51편 중 11편만 잡혀 분포가 5분의 1로
+    만들어질 뻔했다.
+
+    머리글 줄이 없으면 글의 40%를 지난 뒤의 "References"를 후보로 두고,
+    **그 뒤가 실제로 서지 목록인지**(연도가 열다섯 개 이상 나오는지) 보고
+    고른다. 본문에서 "references to the standard"처럼 쓰인 자리를 참고문헌
+    시작으로 삼지 않기 위해서다.
+    """
     m = list(REF_HEAD.finditer(text))
-    if not m:
-        return ""
-    return text[m[-1].end():]
+    if m:
+        return text[m[-1].end():]
+    best = None
+    for m2 in re.finditer("References|REFERENCES|Bibliography|참고문헌", text):
+        if m2.start() < len(text) * 0.4:
+            continue
+        tail = text[m2.end():m2.end() + 12000]
+        if len(REF_YEAR.findall(tail)) >= 15:
+            best = m2          # 마지막으로 조건을 만족한 자리
+    return text[best.end():] if best else ""
 
 
 def journals_of(body):
@@ -91,6 +116,25 @@ def journals_of(body):
         c[key_of(j)] += 1
         LABEL[key_of(j)].add(j)
     return c
+
+
+def per_paper_stats(per_paper, keys):
+    """저널마다 편별 점유율의 중앙값·사분위를 낸다."""
+    out = {}
+    for k in keys:
+        shares = []
+        for _, c in per_paper:
+            tot = sum(c.values())
+            shares.append(100.0 * c.get(k, 0) / tot if tot else 0.0)
+        shares.sort()
+        if len(shares) >= 4:
+            q = statistics.quantiles(shares, n=4)
+            q1, q3 = q[0], q[2]
+        else:
+            q1, q3 = shares[0], shares[-1]
+        out[k] = (statistics.median(shares), q1, q3,
+                  sum(1 for x in shares if x > 0), len(shares))
+    return out
 
 
 def per_paper_report(per_paper, total, top, mine=None, n_mine=0):
@@ -144,7 +188,7 @@ def per_paper_report(per_paper, total, top, mine=None, n_mine=0):
     return L
 
 
-def compare_ours(path, total, n_ref_total, top):
+def compare_ours(path, total, n_ref_total, top, stats=None):
     """우리 참고문헌 분포를 게재작 분포와 나란히 놓는다."""
     L = ["", "## 우리 원고와 나란히 보기"]
     if not os.path.exists(path):
@@ -173,7 +217,12 @@ def compare_ours(path, total, n_ref_total, top):
         p_them = 100.0 * n / n_ref_total
         p_us = 100.0 * mine.get(k, 0) / n_mine
         gap = p_us - p_them
-        if mine.get(k, 0) == 0 and p_them >= 1.0:
+        med = stats.get(k, (None,))[0] if stats else None
+        if med is not None and med == 0 and p_us == 0:
+            # 게재작도 **한 편이 보통 0%**인 저널이다. 우리가 0인 것이 정상.
+            # 전체를 한 통에 넣고 센 값으로 "한 편도 없음"이라 하면 오판이다
+            v = "정상(게재작도 편별 중앙값 0%)"
+        elif mine.get(k, 0) == 0 and p_them >= 1.0:
             v = "**한 편도 없음**"
             short.append((max(LABEL[k], key=len) if LABEL[k] else k, p_them))
         elif gap < -0.5 * p_them and p_them >= 1.0:
@@ -249,6 +298,10 @@ def main():
     L.append("")
     L.append("- 대상 %d편 중 참고문헌을 뽑은 것 **%d편**, 뽑힌 항목 %d개"
              % (len(files), used, n_ref_total))
+    if used < 0.6 * len(files):
+        L.append("- **주의: 대상의 %.0f%%에서만 참고문헌을 뽑았다.**"
+                 " 이 분포를 그대로 쓰면 안 된다. 캐시에서 참고문헌 머리글이"
+                 " 사라졌는지 먼저 본다" % (100.0 * used / len(files)))
     L.append("- 형식이 제각각이라 **전부 뽑히지는 않는다.** 절대 개수가 아니라"
              " 분포로 읽는다")
     L.append("")
@@ -277,8 +330,9 @@ def main():
 
     ours = opt("--ours")
     mine, n_mine = None, 0
+    stats = per_paper_stats(per_paper, [k for k, _ in total.most_common(top)])
     if ours:
-        block, mine, n_mine = compare_ours(ours, total, n_ref_total, top)
+        block, mine, n_mine = compare_ours(ours, total, n_ref_total, top, stats)
         L.extend(block)
     L.extend(per_paper_report(per_paper, total, top, mine, n_mine))
 
