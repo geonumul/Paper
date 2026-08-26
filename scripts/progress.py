@@ -66,6 +66,59 @@ QUOTA = {"7a": 60, "7b": 25, "7c": 10, "7d": 4, "7-2": 1,
          "8": 8, "9": 10, "10": 2}
 
 
+# 단계마다 **먼저 읽을 문서**와 **쓸 도구**.
+# 할 일만 말하고 어떻게 하는지 안 말하면, 도구가 있는 줄 모르고 임시
+# 스크립트를 만들어 돌리게 된다. 실제로 문장 층에서 그 일이 났고 기능
+# 갈래를 제 나름대로 지어 썼다
+STEP_DOC = {
+    "0":   ("13_작업방식.md", []),
+    "1":   ("01_게재작수집_실측.md", []),
+    "2":   ("01_게재작수집_실측.md", ["lit_audit.py <논문폴더>"]),
+    "3":   ("01_게재작수집_실측.md",
+            ["pdf_text.py <pdf폴더> <캐시폴더>",
+             "pdf_text.py --check <pdf폴더> <캐시폴더>",
+             "check_ngram.py --calibrate --txt <코퍼스>",
+             "corpus_profile.py --txt <코퍼스>"]),
+    "4":   ("04_검수기준.md", ["cite_sources.py --txt <코퍼스>"]),
+    "5":   ("02_통독_기록형식.md + 03_규칙서_뽑기.md",
+            ["outline_map.py --txt <코퍼스> --all"]),
+    "6":   ("04_검수기준.md",
+            ["check_style.py <원고> --txt <코퍼스>",
+             "manuscript_lint.py <원고>",
+             "check_invisible.py <원고>"]),
+    "7a":  ("15_직접대조_검수.md 3항",
+            ["word_census.py <원고> --txt <코퍼스> --out <대장>",
+             "word_judge.py <대장> <시작> <끝> --md <원고> --txt <코퍼스> --apply",
+             "word_judge.py <대장> <시작> <끝> --md <원고> --txt <코퍼스> --verify",
+             "collocation.py <원고> --txt <코퍼스>"]),
+    "7b":  ("15_직접대조_검수.md 4항",
+            ["unit_census.py <원고> --sents --out <대장>",
+             "sent_judge.py <대장> <시작> <끝> --md <원고> --txt <코퍼스> --apply",
+             "sent_judge.py <대장> <시작> <끝> --md <원고> --txt <코퍼스> --verify"]),
+    "7c":  ("15_직접대조_검수.md 5항",
+            ["unit_census.py <원고> --paras --out <대장>"]),
+    "7d":  ("15_직접대조_검수.md 5-6항", ["unit_census.py <원고> --out <대장>"]),
+    "7-2": ("19_각도별_읽기검사.md", []),
+    "7e":  ("15_직접대조_검수.md 7항",
+            ["carry_up.py --dir <출력폴더>",
+             "carry_up.py --dir <출력폴더> --apply"]),
+    "8":   ("17_인용검증.md",
+            ["find_source.py <성> <연도> --root <프로젝트뿌리>",
+             "attribution.py <원고> --txt <인용원문폴더>",
+             "find_usage.py <표현> --txt <코퍼스>"]),
+    "9":   ("18_번역대조.md", ["align_check.py <국문> <영문>"]),
+    "10":  ("09_그림과표.md",
+            ["figure_forensics.py <pdf> --scan",
+             "pdf_render.py <pdf> <시작쪽> <끝쪽> 2.0",
+             "word_census.py <원고> --floats --txt <코퍼스>"]),
+    "11":  ("08_AI티제거.md",
+            ["check_ngram.py <원고> --txt <코퍼스>",
+             "check_invisible.py <원고>"]),
+    "12":  ("10_제출_Elsevier.md",
+            ["build_match.py <작업본> <투고물>"]),
+}
+
+
 def opt(name, default=None):
     if name in sys.argv:
         i = sys.argv.index(name) + 1
@@ -298,9 +351,12 @@ def gate(step, d, st):
 
 
 def bar(st, d):
-    done = [s[0] for s in STEPS if st["steps"].get(s[0], {}).get("done")]
-    cur = next((s for s in STEPS if not st["steps"].get(s[0], {}).get("done")),
-               None)
+    def settled(n):
+        r = st["steps"].get(n, {})
+        return bool(r.get("done") or r.get("skip"))
+
+    done = [s[0] for s in STEPS if settled(s[0])]
+    cur = next((s for s in STEPS if not settled(s[0])), None)
     line = "[진행 %d/%d단계" % (len(done), len(STEPS))
     if cur:
         out = os.path.join(d, cur[2]) if cur[2] else ""
@@ -364,6 +420,24 @@ def status(d, st):
     else:
         print("- 산출물: `%s`" % (os.path.join(d, out) if out else "(파일 없음)"))
     print("- 관문: %s" % ("통과" if ok else why))
+    doc, tools = STEP_DOC.get(num, ("", []))
+    if doc:
+        print("")
+        print("### 먼저 읽는다")
+        print("")
+        print("    references/%s" % doc)
+        print("")
+        print("**절차가 거기 적혀 있다. 읽고 그대로 한다.**"
+              " 임시 스크립트로 대체하지 않는다")
+    if tools:
+        print("")
+        print("### 이 일을 하는 도구가 있다")
+        print("")
+        for c in tools:
+            print("    python scripts/%s" % c)
+        print("")
+        print("**직접 만들지 않는다.** 도구가 못 하는 일이면 못 한다고"
+              " 말하고 멈춘다")
     print("")
     print("끝나면 `python progress.py --done %s` 를 돌린다."
           " **통과 못 하면 거부된다.**" % num)
