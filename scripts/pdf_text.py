@@ -51,11 +51,27 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
                               errors="replace")
 
 
-def page_text(pg):
-    """한 쪽을 **단 순서로** 읽는다. 두 단이면 왼쪽을 다 읽고 오른쪽으로."""
+def page_text(pg, margin=0.0):
+    """한 쪽을 **단 순서로** 읽는다. 두 단이면 왼쪽을 다 읽고 오른쪽으로.
+
+    `margin`을 주면 쪽 위아래 그만큼을 버린다. 면주와 쪽 번호가 거기 있고,
+    그것이 본문에 섞이면 **문장 한가운데에 박힌다.** 실제로 이렇게 나왔다.
+
+        ... The structural non-response on risk **Preprint submitted to
+        Elsevier Page 4 of 16 Explainable AI and construction accident
+        occurrence** assessment arises because ...
+
+    캐시를 만들 때는 0으로 두어 다 담고, 원고와 맞춰 볼 때만 잘라 낸다.
+    """
     blocks = [b for b in pg.get_text("blocks") if b[6] == 0 and b[4].strip()]
     if not blocks:
         return ""
+    if margin > 0:
+        r = pg.rect
+        lo, hi = r.y0 + r.height * margin, r.y1 - r.height * margin
+        blocks = [b for b in blocks if b[3] >= lo and b[1] <= hi]
+        if not blocks:
+            return ""
     mid = pg.rect.width / 2.0
     left = [b for b in blocks if (b[0] + b[2]) / 2 < mid]
     right = [b for b in blocks if (b[0] + b[2]) / 2 >= mid]
